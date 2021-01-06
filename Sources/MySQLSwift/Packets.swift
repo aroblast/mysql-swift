@@ -1,131 +1,128 @@
-//
-//  Packets.swift
-//  mysql_driver
-//
-//  Created by Marius Corega on 24/12/15.
-//  Copyright © 2015 Marius Corega. All rights reserved.
-//
-
-
 extension MySQL.Connection {
-    
-    func readResultOK() throws {
-        
-        if let data = try socket?.readPacket() {
-            switch data[0] {
-            case 0x00:
-                _ = handleOKPacket(data)
-                break
-            case 0xfe:
-                break
-            case 0xff:
-                throw handleErrorPacket(data)
-            default: break
-            }
-        }
-    }
-    
-    fileprivate func handleOKPacket(_ data:[UInt8]) -> Int {
-        var n, m : Int
-        var ar, insId : UInt64?
-        
-        // 0x00 [1 byte]
-        
-        // Affected rows [Length Coded Binary]
-        (ar, n) = MySQL.Utils.lenEncInt(Array(data[1...data.count-1]))
-        self.affectedRows = ar ?? 0
-        
-        // Insert id [Length Coded Binary]
-        (insId, m) = MySQL.Utils.lenEncInt(Array(data[1+n...data.count-1]))
-        self.insertId = insId ?? 0
-        
-        self.status = UInt16(data[1+n+m]) | UInt16(data[1+n+m+1]) << 8
-        
-        return 0
-    }
-    
-    func handleErrorPacket(_ data:[UInt8]) -> MySQL.MySQLError {
-        
-        if data[0] != 0xff {
-            return MySQL.MySQLError.error(-1, "EOF encountered")
-        }
-        
-        let errno = data[1...3].uInt16()
-        var pos = 3
-        
-        print("MySQL errno: \(errno)")
-        
-        if data[3] == 0x23 {
-            pos = 9
-        }
-        var d1 = Array(data[pos..<data.count])
-        d1.append(0)
-        let errStr = d1.string()
-        //let errStr = String.fromCString(UnsafePointer<CChar>(Array(data[pos...data.count-1])))! //data[pos..<data.count].string()
-        
-        print("MySQL errstr: \(String(describing: errStr))")
-        
-        return MySQL.MySQLError.error(Int(errno), errStr!)
-    }
-    
-    
-    func readUntilEOF() throws {
-        while let data = try socket?.readPacket() {
-            //is EOF
-            if data[0] == 0xfe {
-                return
-            }
-        }
-    }
-    
-    func writeCommandPacketStr(_ cmd:UInt8, q:String) throws {
-        socket?.packnr = -1
-        
-        var data = [UInt8]()
-        
-        data.append(cmd)
-        data.append(contentsOf:q.utf8)
-        
-        try socket?.writePacket(data)
-    }
-    
-    func writeCommandPacket(_ cmd:UInt8) throws {
-        socket?.packnr = -1
-        
-        var data = [UInt8]()
-        
-        data.append(cmd)
-        
-        try socket?.writePacket(data)
-    }
-
-    
-    func readResultSetHeaderPacket() throws ->Int {
-        self.EOFfound = false
-        if let data = try socket?.readPacket() {
-            
-            switch data[0] {
-            case 0x00:
-                return handleOKPacket(data)
-            case 0xff:
-                throw handleErrorPacket(data)
-            default:break
-            }
-            
-            //column count
-            let (num, n) = MySQL.Utils.lenEncInt(data)
-            
-            guard num != nil else {
-                return 0
-            }
-            
-            if (n - data.count) == 0 {
-                return Int(num!)
-            }
-            
-            return 0
-        }
-        return 0
-    }
-
+	
+	func checkResult() throws {
+		// If data to read
+		if let data = try socket?.readPacket() {
+			switch data[0] {
+			case 0x00:
+				handleSuccessPacket(data)
+				break
+			case 0xfe:
+				break
+			case 0xff:
+				throw handleErrorPacket(data)
+			default: break
+			}
+		}
+	}
+	
+	/// Handle success packet.
+	fileprivate func handleSuccessPacket(_ data:[UInt8]) {
+		var n, m : Int
+		var affectedRows, insertId : UInt64?
+		
+		// Affected rows [Length Coded Binary]
+		(affectedRows, n) = MySQL.Utils.lenEncInt(Array(data[1...data.count-1]))
+		self.affectedRows = affectedRows ?? 0
+		
+		// Insert id [Length Coded Binary]
+		(insertId, m) = MySQL.Utils.lenEncInt(Array(data[1+n...data.count-1]))
+		self.insertId = insertId ?? 0
+		
+		// Save connection status
+		self.status = UInt16(data[1+n+m]) | UInt16(data[1+n+m+1]) << 8
+	}
+	
+	/// Handle error packet.
+	func handleErrorPacket(_ data:[UInt8]) -> MySQL.MySQLError {
+		// If EOF error
+		if data[0] != 0xff {
+			return MySQL.MySQLError.error(-1, "EOF encountered")
+		}
+		
+		// Error details
+		let errorNumber = data[1...3].uInt16()
+		var position = 3
+		
+		// Get error position
+		if data[3] == 0x23 {
+			position = 9
+		}
+		
+		var d1 = Array(data[position..<data.count])
+		d1.append(0)
+		
+		let errorString = d1.string()
+		
+		print("MySQL error #\(errorNumber) - \(errorString!)")
+		return MySQL.MySQLError.error(Int(errorNumber), errorString!)
+	}
+	
+	/// Read packets until EOF symbol.
+	func readUntilEOF() throws {
+		// While data to read
+		while let data = try socket?.readPacket() {
+			// If EOF
+			if data[0] == 0xfe { return }
+		}
+	}
+	
+	/// Write command packet and query.
+	func writeCommandPacketQuery(_ command : UInt8, query : String) throws {
+		socket?.packetsNumber = -1
+		
+		var data = [UInt8]()
+		data.append(command)
+		data.append(contentsOf: query.utf8)
+		
+		try socket?.writePacket(data)
+	}
+	
+	/// Write only command packet.
+	func writeCommandPacket(_ command : UInt8) throws {
+		socket?.packetsNumber = -1
+		
+		var data = [UInt8]()
+		data.append(command)
+		
+		try socket?.writePacket(data)
+	}
+	
+	/// Read result length.
+	func readResultSetHeaderPacket() throws -> Int {
+		EOFfound = false
+		
+		// If data to read
+		if let data = try socket?.readPacket() {
+			switch data[0] {
+			case 0x00:
+				handleSuccessPacket(data)
+				return 0
+			case 0xff:
+				throw handleErrorPacket(data)
+			default:
+				break
+			}
+			
+			// Count columns
+			let (num, n) = MySQL.Utils.lenEncInt(data)
+			
+			// Check no error
+			guard num != nil else {
+				return 0
+			}
+			
+			// Return columns count
+			if (n - data.count) == 0 {
+				return Int(num!)
+			}
+			
+			// If no columns
+			return 0
+		}
+		else {
+			// Empty result
+			return 0
+		}
+	}
 }

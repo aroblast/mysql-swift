@@ -1,21 +1,3 @@
-//
-//  sha1.swift
-//  mysql_driver
-//
-//  Created by cipi on 22/12/15.
-
-//
-//  Based on 
-//  CryptoSwift
-//
-//  Created by Marcin Krzyzanowski on 16/08/14.
-//  Copyright (c) 2014 Marcin Krzyzanowski. All rights reserved.
-//
-
-
-
-
-/* array of bytes */
 extension Int {
     /** Array of bytes with optional padding (little-endian) */
     public func bytes(_ totalBytes: Int = MemoryLayout<Int>.size) -> [UInt8] {
@@ -52,22 +34,6 @@ protocol BitshiftOperationsType {
     static func <<=( lhs: inout Self, rhs: Self)
     static func >>=( lhs: inout Self, rhs: Self)
 }
-
-// MARK: - shiftLeft
-
-// helper to be able tomake shift operation on T
-func << <T:SignedInteger>(lhs: T, rhs: Int) -> Int {
-    let a = lhs as! Int
-    let b = rhs
-    return a << b
-}
-
-func << <T:UnsignedInteger>(lhs: T, rhs: Int) -> UInt {
-    let a = lhs as! UInt
-    let b = rhs
-    return a << b
-}
-
 
 protocol ByteConvertible {
     init(_ value: UInt8)

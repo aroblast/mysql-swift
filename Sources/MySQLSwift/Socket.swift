@@ -1,11 +1,3 @@
-//
-//  Socket.swift
-//  mysql_driver
-//
-//  Created by Marius Corega on 18/12/15.
-//  Copyright © 2015 Marius Corega. All rights reserved.
-//
-
 import Foundation
 
 extension Socket {
@@ -28,77 +20,65 @@ extension Socket {
 }
 
 open class Socket {
+	let socket : Int32
+	var address : sockaddr_in?
 	
-	let s : Int32
 	var bytesToRead : UInt32
-	var packnr : Int
-	var socketInUse = false
-	var addr : sockaddr_in?
-	
-	// ---- [ setup ] ---------------------------------------------------------
-	
+	var packetsNumber : Int
 	
 	init(host : String, port : Int) throws {
-		// create socket to MySQL Server
+		// Create socket to MySQL Server
 		bytesToRead = 0
-		packnr = 0
+		packetsNumber = 0
+		socket = Darwin.socket(AF_INET, SOCK_STREAM, Int32(0))
 		
-		s = socket(AF_INET, SOCK_STREAM, Int32(0))
-		
-		guard self.s != -1 else {
+		// Check socket creation successful
+		guard self.socket != -1 else {
 			throw SocketError.socketCreationFailed(Socket.descriptionOfLastError())
 		}
 		
-		// set socket options
+		// Set socket options
 		var value : Int32 = 1;
-		guard setsockopt(self.s, SOL_SOCKET, SO_REUSEADDR, &value,
+		guard setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, &value,
+										 socklen_t(MemoryLayout<Int32>.size)) != -1 else {
+			throw SocketError.setSockOptFailed(Socket.descriptionOfLastError())
+		}
+		guard setsockopt(socket, SOL_SOCKET, SO_KEEPALIVE, &value,
 										 socklen_t(MemoryLayout<Int32>.size)) != -1 else {
 			throw SocketError.setSockOptFailed(Socket.descriptionOfLastError())
 		}
 		
-		guard setsockopt(self.s, SOL_SOCKET,  SO_KEEPALIVE, &value,
-										 socklen_t(MemoryLayout<Int32>.size)) != -1 else {
-			throw SocketError.setSockOptFailed(Socket.descriptionOfLastError())
-		}
-		
+		// Host
 		let hostIP = try getHostIP(host)
-		
-		addr = sockaddr_in(sin_len: __uint8_t(MemoryLayout<sockaddr_in>.size),
+		address = sockaddr_in(sin_len: __uint8_t(MemoryLayout<sockaddr_in>.size),
 											 sin_family: sa_family_t(AF_INET),
 											 sin_port: Socket.porthtons(in_port_t(port)),
 											 sin_addr: in_addr(s_addr: inet_addr(hostIP)),
 											 sin_zero: (0, 0, 0, 0, 0, 0, 0, 0))
-		
-		guard setsockopt(self.s, SOL_SOCKET,  SO_NOSIGPIPE, &value,
+		guard setsockopt(socket, SOL_SOCKET,  SO_NOSIGPIPE, &value,
 										 socklen_t(MemoryLayout<Int32>.size)) != -1 else {
 			throw SocketError.setSockOptFailed(Socket.descriptionOfLastError())
 		}
 	}
 	
-	func Connect() throws {
-		#if os(Linux)
-		var saddr = sockaddr( sa_family: 0,
-													sa_data: (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0))
-		#else
-		var saddr = sockaddr(sa_len: 0, sa_family: 0,
+	/// Connect socket to MySQL server.
+	func open() throws {
+		var socketAddress = sockaddr(sa_len: 0, sa_family: 0,
 												 sa_data: (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0))
 		
-		#endif
-		
-		memcpy(&saddr, &addr, Int(MemoryLayout<sockaddr_in>.size))
-		guard connect(self.s, &saddr, socklen_t(MemoryLayout<sockaddr_in>.size)) != -1 else {
+		memcpy(&address, &socketAddress, Int(MemoryLayout<sockaddr_in>.size))
+		guard connect(socket, &socketAddress, socklen_t(MemoryLayout<sockaddr_in>.size)) != -1 else {
 			throw SocketError.connectFailed(Socket.descriptionOfLastError())
 		}
-		
 	}
 	
 	func close() throws {
-		guard shutdown(self.s, 2) == 0 else {
+		guard shutdown(socket, 2) == 0 else {
 			throw SocketError.socketShutdownFailed(Socket.descriptionOfLastError())
 		}
 	}
 	
-	func getHostIP(_ host:String) throws ->String{
+	func getHostIP(_ host : String) throws -> String{
 		let he = gethostbyname(host)
 		
 		guard he != nil else {
@@ -107,7 +87,6 @@ open class Socket {
 		
 		let p1 = he?.pointee.h_addr_list[0]
 		let p2 = UnsafeRawPointer(p1)?.assumingMemoryBound(to: in_addr.self)
-		
 		let p3 = inet_ntoa(p2!.pointee)
 		
 		return String(cString:p3!)
@@ -117,14 +96,15 @@ open class Socket {
 		return String(cString:UnsafePointer(strerror(errno))) //?? "Error: \(errno)"
 	}
 	
+	/// Read a UInt8 from socket.
 	func readNUInt8(_ n:UInt32) throws -> [UInt8] {
 		var buffer = [UInt8](repeating: 0, count: Int(n))
 		
-		let bufferPrt = UnsafeMutableRawPointer(&buffer)
+		let bufferPrt = withUnsafeMutableBytes(of: &buffer) { bytes in UnsafeMutableRawPointer(bytes.baseAddress) }!
 		var read = 0
 		
 		while read < Int(n) {
-			read += recv(s, bufferPrt + read, Int(n) - read, 0)
+			read += recv(socket, bufferPrt + read, Int(n) - read, 0)
 			
 			if read <= 0 {
 				throw SocketError.recvFailed(Socket.descriptionOfLastError())
@@ -138,7 +118,7 @@ open class Socket {
 		return buffer
 	}
 	
-	
+	/// Read header buffer  from socket.
 	func readHeader() throws -> (UInt32, Int) {
 		let b = try readNUInt8(3).uInt24()
 		
@@ -148,37 +128,38 @@ open class Socket {
 		return (b, Int(pn))
 	}
 	
+	/// Read packet from socket.
 	func readPacket() throws -> [UInt8] {
 		let (len, pknr) = try readHeader()
 		bytesToRead = len
-		self.packnr = pknr
+		packetsNumber = pknr
 		return try readNUInt8(len)
 	}
 	
+	/// Write packet to socket.
 	func writePacket(_ data:[UInt8]) throws {
-		try writeHeader(UInt32(data.count), pn: UInt8(self.packnr + 1))
+		try writeHeader(UInt32(data.count), pn: UInt8(packetsNumber + 1))
 		try  writeBuffer(data)
 	}
 	
+	/// Write buffer to socket.
 	func writeBuffer(_ buffer:[UInt8]) throws  {
-		
 		try buffer.withUnsafeBufferPointer {
 			var sent = 0
 			while sent < buffer.count {
-				#if os(Linux)
-				let s = send(self.s, $0.baseAddress + sent, Int(buffer.count - sent), Int32(MSG_NOSIGNAL))
-				#else
-				let s = write(self.s, $0.baseAddress! + sent, Int(buffer.count - sent))
-				#endif
-				if s <= 0 {
+				let size = write(socket, $0.baseAddress! + sent, Int(buffer.count - sent))
+				
+				if size <= 0 {
 					throw SocketError.writeFailed(Socket.descriptionOfLastError())
-					
 				}
-				sent += s
+				else {
+					sent += size
+				}
 			}
 		}
 	}
 	
+	/// Write header buffer to socket.
 	func writeHeader(_ len:UInt32, pn:UInt8) throws {
 		var ph = [UInt8].UInt24Array(len)
 		ph.append(pn)
@@ -186,29 +167,7 @@ open class Socket {
 	}
 	
 	fileprivate static func porthtons(_ port: in_port_t) -> in_port_t {
-		#if os(Linux)
-		return htons(port)
-		#else
 		let isLittleEndian = Int(OSHostByteOrder()) == OSLittleEndian
 		return isLittleEndian ? _OSSwapInt16(port) : port
-		#endif
 	}
-	
-	/*
-	func lockSocket() {
-	while socketInUse {
-	
-	}
-	socketInUse = true
-	}
-	
-	func unlockSocket() {
-	socketInUse = false
-	}
-	
-	func socketLocked() -> Bool {
-	return socketInUse
-	}
-	*/
-	
 }

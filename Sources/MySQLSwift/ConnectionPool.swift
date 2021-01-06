@@ -1,77 +1,89 @@
-//
-//  ConnectionPool.swift
-//  swift_fork_server
-//
-//  Created by cipi on 20/01/16.
-//  Copyright © 2016 Marius Corega. All rights reserved.
-//
-
-
 import Foundation
 
 public extension MySQL {
-    
-class ConnectionPool {
-    
-    struct ConStruct {
-        var con : MySQL.Connection
-        var connected : Bool
-    }
-    
-    let numCon : Int
-    var cons : [ConStruct]
-    let q = DispatchQueue(label: "conpoolqueue", attributes: [])
-    let conn : MySQL.Connection
-    
-    public init(num:Int, connection: MySQL.Connection) throws {
-        numCon = num
-        conn = connection
-        cons = [ConStruct]()
-        
-        for _ in 0..<numCon {
-            let c = try MySQL.Connection(addr: connection.addr!, user: connection.user!, passwd: connection.passwd, dbname: connection.dbname)
-            try c.open()
-            cons.append(ConStruct(con: c, connected: false))
-        }
-    }
-    
-    open func getConnection() -> MySQL.Connection? {
-        
-        var con : MySQL.Connection? = nil
-        
-        q.sync { 
-            for i in 0..<self.cons.count {
-                if !self.cons[i].connected {
-                    self.cons[i].connected = true
-                    con  = self.cons[i].con
-                    break
-                }
-            }
-            if (con == nil) {
-                let c = try? MySQL.Connection(addr: self.conn.addr!, user: self.conn.user!, passwd: self.conn.passwd, dbname: self.conn.dbname)
-                try? c?.open()
-                    let cs = ConStruct(con: c!, connected: false)
-                    self.cons.append(cs)
-                    con = cs.con
-                
-            }
-        }
-        
-        return con
-    }
-    
-    open func free(_ con: MySQL.Connection?) {
-        
-        if (con != nil) {
-            q.sync {
-                for i in 0..<self.cons.count {
-                    if self.cons[i].con.conID == con!.conID {
-                        self.cons[i].connected = false
-                        break
-                    }
-                }
-            }
-        }
-    }
-}
+	
+	class ConnectionPool {
+		
+		// Connection with its state
+		struct PoolItem {
+			var connection : MySQL.Connection
+			var connected : Bool
+		}
+		
+		// Parameters
+		let count : Int
+		var connections : [PoolItem]
+		let poolConnection : MySQL.Connection
+		
+		let dispatchQueue = DispatchQueue(label: "conpoolqueue", attributes: [])
+		
+		public init(count : Int, connection : MySQL.Connection) throws {
+			self.count = count
+			self.poolConnection = connection
+			
+			self.connections = [PoolItem]()
+			
+			// Init all connections
+			for _ in 0..<count {
+				let current : Connection = try MySQL.Connection(
+					address: poolConnection.address,
+					user: poolConnection.user,
+					password: poolConnection.password,
+					dbname: poolConnection.dbname
+				)
+				
+				// Try opening and add the conneciton to the pool
+				try current.open()
+				connections.append(PoolItem(connection: current, connected: false))
+			}
+		}
+		
+		open func getConnection() -> MySQL.Connection? {
+			var result : MySQL.Connection? = nil
+			
+			dispatchQueue.sync {
+				// Switch to the first free connection
+				for i in 0..<count {
+					if !connections[i].connected {
+						connections[i].connected = true
+						result = connections[i].connection
+						break
+					}
+				}
+				
+				// If all connections used create a new one
+				if (result == nil) {
+					let connection = try? MySQL.Connection(
+						address: poolConnection.address,
+						user: poolConnection.user,
+						password: poolConnection.password,
+						dbname: poolConnection.dbname
+					)
+					
+					// Open
+					try? connection?.open()
+					
+					// Add it the pool
+					let item = PoolItem(connection: connection!, connected: false)
+					self.connections.append(item)
+					
+					result = item.connection
+				}
+			}
+			
+			return result
+		}
+		
+		open func free(_ connection: MySQL.Connection) {
+			// Free connection from id
+			dispatchQueue.sync {
+				for i in 0..<count {
+					if connections[i].connection.id == connection.id {
+						connections[i].connected = false
+						break
+					}
+				}
+			}
+		}
+	}
 }
