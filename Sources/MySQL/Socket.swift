@@ -1,24 +1,5 @@
 import Foundation
 
-extension Socket {
-	enum SocketError: Error {
-		case socketCreationFailed(String)
-		case socketShutdownFailed(String)
-		case socketSettingReUseAddrFailed(String)
-		case connectFailed(String)
-		case bindFailed(String)
-		case listenFailed(String)
-		case writeFailed(String)
-		case getPeerNameFailed(String)
-		case convertingPeerNameFailed
-		case getNameInfoFailed(String)
-		case acceptFailed(String)
-		case recvFailed(String)
-		case setSockOptFailed(String)
-		case getHostIPFailed
-	}
-}
-
 open class Socket {
 	let socket : Int32
 	var address : sockaddr_in?
@@ -66,30 +47,31 @@ open class Socket {
 		var socketAddress = sockaddr(sa_len: 0, sa_family: 0,
 												 sa_data: (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0))
 		
-		memcpy(&address, &socketAddress, Int(MemoryLayout<sockaddr_in>.size))
+		memcpy(&socketAddress, &address, Int(MemoryLayout<sockaddr_in>.size))
 		guard connect(socket, &socketAddress, socklen_t(MemoryLayout<sockaddr_in>.size)) != -1 else {
 			throw SocketError.connectFailed(Socket.descriptionOfLastError())
 		}
 	}
 	
+	/// Disonnect socket from MySQL server.
 	func close() throws {
 		guard shutdown(socket, 2) == 0 else {
 			throw SocketError.socketShutdownFailed(Socket.descriptionOfLastError())
 		}
 	}
 	
-	func getHostIP(_ host : String) throws -> String{
-		let he = gethostbyname(host)
+	func getHostIP(_ host : String) throws -> String {
+		let hostinfo = gethostbyname(host)
 		
-		guard he != nil else {
+		guard hostinfo != nil else {
 			throw SocketError.getHostIPFailed
 		}
 		
-		let p1 = he?.pointee.h_addr_list[0]
+		let p1 = hostinfo?.pointee.h_addr_list[0]
 		let p2 = UnsafeRawPointer(p1)?.assumingMemoryBound(to: in_addr.self)
 		let p3 = inet_ntoa(p2!.pointee)
 		
-		return String(cString:p3!)
+		return String(cString: p3!)
 	}
 	
 	fileprivate class func descriptionOfLastError() -> String {
@@ -97,16 +79,14 @@ open class Socket {
 	}
 	
 	/// Read a UInt8 from socket.
-	func readNUInt8(_ n:UInt32) throws -> [UInt8] {
+	func readNUInt8(_ n : UInt32) throws -> [UInt8] {
 		var buffer = [UInt8](repeating: 0, count: Int(n))
 		
-		let bufferPrt = withUnsafeMutableBytes(of: &buffer) { bytes in UnsafeMutableRawPointer(bytes.baseAddress) }!
 		var read = 0
-		
 		while read < Int(n) {
-			read += recv(socket, bufferPrt + read, Int(n) - read, 0)
+			read += recv(socket, buffer.withUnsafeMutableBytes { $0.baseAddress! } + read, Int(n) - read, 0)
 			
-			if read <= 0 {
+			if (read <= 0) {
 				throw SocketError.recvFailed(Socket.descriptionOfLastError())
 			}
 		}
@@ -169,5 +149,24 @@ open class Socket {
 	fileprivate static func porthtons(_ port: in_port_t) -> in_port_t {
 		let isLittleEndian = Int(OSHostByteOrder()) == OSLittleEndian
 		return isLittleEndian ? _OSSwapInt16(port) : port
+	}
+}
+
+extension Socket {
+	enum SocketError: Error {
+		case socketCreationFailed(String)
+		case socketShutdownFailed(String)
+		case socketSettingReUseAddrFailed(String)
+		case connectFailed(String)
+		case bindFailed(String)
+		case listenFailed(String)
+		case writeFailed(String)
+		case getPeerNameFailed(String)
+		case convertingPeerNameFailed
+		case getNameInfoFailed(String)
+		case acceptFailed(String)
+		case recvFailed(String)
+		case setSockOptFailed(String)
+		case getHostIPFailed
 	}
 }

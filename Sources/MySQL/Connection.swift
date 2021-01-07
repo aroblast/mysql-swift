@@ -21,6 +21,16 @@ public extension MySQL.Connection {
 		self.isConnected = false
 	}
 	
+	/// Connect socket to server.
+	private func connect() throws {
+		// Setup mysql socket
+		socket = try Socket(host: address, port: port)
+		try socket?.open()
+		
+		// Handshake
+		self.mysql_Handshake = try readHandshake()
+	}
+	
 	/// Read received MySQL handshake.
 	private func readHandshake() throws -> MySQL.mysql_handshake {
 		var result = MySQL.mysql_handshake()
@@ -50,16 +60,6 @@ public extension MySQL.Connection {
 		return result
 	}
 	
-	/// Connect socket to server.
-	private func connect() throws {
-		// Setup mysql socket
-		socket = try Socket(host: address, port: port)
-		try socket?.open()
-		
-		// Handshake
-		self.mysql_Handshake = try readHandshake()
-	}
-	
 	/// Authenticate user in MySQL server.
 	private func auth() throws {
 		// For binary ops
@@ -77,7 +77,7 @@ public extension MySQL.Connection {
 		flags &= UInt32((mysql_Handshake?.capFlags)!) | 0xffff0000
 		
 		// If database is set
-		if dbname != nil { flags |= MysqlClientCaps.CLIENT_CONNECT_WITH_DB }
+		if database != nil { flags |= MysqlClientCaps.CLIENT_CONNECT_WITH_DB }
 		
 		// Encode password
 		var encodedPassword = [UInt8]()
@@ -113,8 +113,8 @@ public extension MySQL.Connection {
 		reponse.append(contentsOf: encodedPassword)
 		
 		// If connect with db
-		if (self.dbname != nil) {
-			reponse.append(contentsOf:self.dbname!.utf8)
+		if (database != nil) {
+			reponse.append(contentsOf: database!.utf8)
 		}
 		reponse.append(0)
 		

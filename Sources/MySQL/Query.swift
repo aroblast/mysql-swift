@@ -82,9 +82,9 @@ public extension MySQL.Connection {
 	}
 	
 	/// Use a database for queries.
-	func use(_ dbname : String) throws {
-		try writeCommandPacketQuery(MysqlCommands.COM_INIT_DB, query: dbname)
-		self.dbname = dbname
+	func use(_ database : String) throws {
+		try writeCommandPacketQuery(MysqlCommands.COM_INIT_DB, query: database)
+		self.database = database
 		
 		let resLen = try readResultSetHeaderPacket()
 		

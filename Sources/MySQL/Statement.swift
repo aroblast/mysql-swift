@@ -8,7 +8,7 @@ public extension MySQL {
 		var id : UInt32?
 		var paramCount : Int?
 		var columnCount : UInt16?
-		var columns : [Field]?
+		var fields : [Field]?
 		
 		init(connection : Connection){
 			self.connection = connection
@@ -19,7 +19,7 @@ public extension MySQL {
 			try writeExecutePacket(args)
 			
 			let resultsLen = try connection.readResultSetHeaderPacket()
-			self.columns = try connection.readColumns(resultsLen)
+			fields = try connection.readColumns(resultsLen)
 			
 			return BinaryRow(connection: connection)
 		}
@@ -32,7 +32,7 @@ public extension MySQL {
 			if resultLen > 0 {
 				try connection.readUntilEOF()
 				// MARK: Code duplicate?
-				try connection.readUntilEOF()
+				// try connection.readUntilEOF()
 			}
 		}
 		

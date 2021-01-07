@@ -36,7 +36,7 @@ public struct MySQL {
 		var address : String
 		var user : String
 		var password : String
-		var dbname : String?
+		var database : String?
 		var port : Int
 		
 		var affectedRows : UInt64 = 0
@@ -53,11 +53,11 @@ public struct MySQL {
 		
 		open var isConnected = false
 		
-		public init(address : String, user : String, password : String, dbname : String? = nil, port : Int = 3306) throws {
+		public init(address : String, user : String, password : String, database : String? = nil, port : Int = 3306) throws {
 			self.address = address
 			self.user = user
 			self.password = password
-			self.dbname = dbname
+			self.database = database
 			self.port = port
 		}
 	}

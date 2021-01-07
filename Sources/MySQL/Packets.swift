@@ -30,7 +30,7 @@ extension MySQL.Connection {
 		self.insertId = insertId ?? 0
 		
 		// Save connection status
-		self.status = UInt16(data[1+n+m]) | UInt16(data[1+n+m+1]) << 8
+		status = UInt16(data[1+n+m]) | UInt16(data[1+n+m+1]) << 8
 	}
 	
 	/// Handle error packet.

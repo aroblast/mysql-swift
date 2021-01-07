@@ -206,8 +206,7 @@ extension MySQL {
 
 public extension Date
 {
-	
-	init?(dateString:String?) {
+	init?(dateString : String?) {
 		guard dateString != nil else {
 			return nil
 		}
@@ -223,7 +222,7 @@ public extension Date
 	}
 	
 	
-	init?(timeString:String) {
+	init?(timeString : String) {
 		let dateStringFormatter = DateFormatter()
 		dateStringFormatter.dateFormat = "HH-mm-ss"
 		dateStringFormatter.locale = Locale(identifier: "en_US_POSIX")
@@ -235,7 +234,7 @@ public extension Date
 	}
 	
 	
-	init?(timeStringUsec:String) {
+	init?(timeStringUsec : String) {
 		let dateStringFormatter = DateFormatter()
 		dateStringFormatter.dateFormat = "HH-mm-ss.SSSSSS"
 		dateStringFormatter.locale = Locale(identifier: "en_US_POSIX")
@@ -246,9 +245,7 @@ public extension Date
 		return nil
 	}
 	
-	
-	
-	init?(dateTimeString:String) {
+	init?(dateTimeString : String) {
 		let dateStringFormatter = DateFormatter()
 		dateStringFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
 		dateStringFormatter.locale = Locale(identifier: "en_US_POSIX")
@@ -260,9 +257,7 @@ public extension Date
 		}
 	}
 	
-	
-	init?(dateTimeStringUsec:String) {
-		
+	init?(dateTimeStringUsec : String) {
 		struct statDFT {
 			static var dateStringFormatter :  DateFormatter? = nil
 			static var token : Int = 0
@@ -298,21 +293,17 @@ public extension Date
 	}
 	
 	func dateTimeString() -> String {
-		
 		struct statDFT {
 			static var dateStringFormatter :  DateFormatter? = nil
 			static var token : Int = 0
 		}
 		
-		//  dispatch_once(&statDFT.token) {
 		statDFT.dateStringFormatter = DateFormatter()
 		statDFT.dateStringFormatter!.dateFormat = "yyyy-MM-dd HH:mm:ss"
 		statDFT.dateStringFormatter!.locale = Locale(identifier: "en_US_POSIX")
-		//   }
 		
 		return statDFT.dateStringFormatter!.string(from: self)
 	}
-	
 }
 
 extension Int8 {
@@ -450,28 +441,20 @@ extension UInt64 {
 	}
 }
 
-
 extension Sequence where Iterator.Element == UInt8 {
 	func uInt16() -> UInt16 {
-		let arr = self.map { (elem) -> UInt8 in
-			return elem
-		}
+		let arr = self.map {(e) -> UInt8 in return e }
 		return UInt16(arr[1])<<8 | UInt16(arr[0])
 	}
 	
 	func int16() -> Int16 {
-		let arr = self.map { (elem) -> UInt8 in
-			return elem
-		}
+		let arr = self.map {(e) -> UInt8 in return e }
 		return Int16(arr[1])<<8 | Int16(arr[0])
 	}
 	
-	
 	func uInt24() -> UInt32 {
-		let arr = self.map { (elem) -> UInt8 in
-			return elem
-		}
-		return UInt32(arr[2])<<16 | UInt32(arr[1])<<8 | UInt32(arr[0])
+		let arr = self.map {(e) -> UInt8 in return e }
+		return UInt32(arr[2]) << 16 | UInt32(arr[1]) << 8 | UInt32(arr[0])
 	}
 	
 	func int32() -> Int32 {

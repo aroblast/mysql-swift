@@ -18,7 +18,7 @@ let connection = MySQL.Connection(
   address: "address",
   user: "user",
   password: "password",
-  dbname: "dbname"
+  database: "database"
 )
 
 do{
@@ -62,46 +62,14 @@ for row in results.readAllRows() ?? [] {
 
 ### Connection Pool
 ```swift
-// create a connection pool with 10 connections using con as prototype
-let connPool = try MySQL.ConnectionPool(num: 10, connection: con)
-//create a table object using the connection
-let table = MySQL.Table(tableName: "xctest_conn_pool", connection: con)
-// drop the table if it exists
-try table.drop()
+// Create a connection pool with 10 connections from connection
+let pool = try MySQL.ConnectionPool(number: 10, connection: connection)
 
-// declare a Swift object
-class obj {
-  var id:Int?
-  var val : Int = 1
-}
-            
-// create a new object
-let o = obj()
-// create a new MySQL Table using the object 
-try table.create(o, primaryKey: "id", autoInc: true)
-            
-// do 500 async inserts using the connections pool
-for i in 1...500 {
-  dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_BACKGROUND, 0), {
-  //get a connection from the pool
-    if let c = connPool.getConnection() {
-    // get a Table reference using the connection from the pool
-      let t = MySQL.Table(tableName: "xctest_conn_pool", connection: c)
-      do {
-        let o = obj()
-        o.val = i
-        // insert the object
-        try t.insert(o)
-      }
-      catch {
-        print(error)
-        XCTAssertNil(error)
-        connPool.free(c)
-      }
-      // release the connection to the pool
-      connPool.free(c)
-    }
-  })
+// Use a connection from the connection pool
+if let poolConnection = pool.getConnection() {
+  
+  // Free the connection when done
+  connPool.free(poolConnection)
 }
 ```
 

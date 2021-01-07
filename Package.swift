@@ -3,17 +3,21 @@
 import PackageDescription
 
 let package = Package(
-    name: "MySQLSwift",
+    name: "MySQL",
     products: [
         .library(
-            name: "MySQLSwift",
-            targets: ["MySQLSwift"]
+            name: "MySQL",
+            targets: ["MySQL"]
 				)
     ],
     targets: [
         .target(
-            name: "MySQLSwift",
+            name: "MySQL",
             dependencies: []
+				),
+				.testTarget(
+					name: "MySQLTests",
+					dependencies: ["MySQL"]
 				)
     ]
 )

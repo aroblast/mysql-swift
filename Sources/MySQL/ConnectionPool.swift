@@ -29,7 +29,7 @@ public extension MySQL {
 					address: poolConnection.address,
 					user: poolConnection.user,
 					password: poolConnection.password,
-					dbname: poolConnection.dbname
+					database: poolConnection.database
 				)
 				
 				// Try opening and add the conneciton to the pool
@@ -57,7 +57,7 @@ public extension MySQL {
 						address: poolConnection.address,
 						user: poolConnection.user,
 						password: poolConnection.password,
-						dbname: poolConnection.dbname
+						database: poolConnection.database
 					)
 					
 					// Open
