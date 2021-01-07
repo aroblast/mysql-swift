@@ -10,15 +10,20 @@ To install this package, simply use the `Swift Packages > Add Package Dependency
 ## Usage
 
 ### Connection
+A connection is the object allowing you to communicate to the server via MySQL queries.
+
 ```swift
 // Create the connection object
-let connection = MySQL.Connection(address: "address", user: "user" , password: "password", dbname: "dbname")
+let connection = MySQL.Connection(
+  address: "address",
+  user: "user",
+  password: "password",
+  dbname: "dbname"
+)
 
 do{
   // Open a new connection
   try connection.open()
-  
-  // Your code goes here...
 
   // Closing the connection
   try connection.close()
