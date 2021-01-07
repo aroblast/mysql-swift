@@ -53,8 +53,8 @@ public extension MySQL.Connection {
 	/// Connect socket to server.
 	private func connect() throws {
 		// Setup mysql socket
-		socket = try Socket(host: address, port: self.port)
-		try self.socket?.open()
+		socket = try Socket(host: address, port: port)
+		try socket?.open()
 		
 		// Handshake
 		self.mysql_Handshake = try readHandshake()
