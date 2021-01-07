@@ -2,155 +2,60 @@
 
 This repo is only a first try at a reboot from this great [original repository](https://github.com/mcorega/MySqlSwiftNative) made by [@mcorega](https://github.com/mcorega/).
 
-## Installation
 
+## Installation
 To install this package, simply use the `Swift Packages > Add Package Dependency` on your Xcode project.
+
 
 ## Usage
 
 ### Connection
 ```swift
 // Create the connection object
-let con = MySQL.Connection()
-let db_name = "swift_test"
+let connection = MySQL.Connection(address: "address", user: "user" , password: "password", dbname: "dbname")
 
 do{
   // Open a new connection
-  try con.open("localhost", user: "test", passwd: "test")
+  try connection.open()
   
   // Your code goes here...
 
   // Closing the connection
-  try con.close()
+  try connection.close()
 }
 catch {
   print("Error: \(error)")
 }
 ```
 
-### Tables
+### Queries
+Create a new query from a connection.
 
-#### From Swift
-
+#### Execute
 ```swift
-// Create a new Table object with name on a connection
-let table = MySQL.Table(tableName: "createtable_obj", connection: con)
-// drop the table if it exists
-try table.drop()
-          
-// declare a new Swft Object with various types
-struct obj {
-  var iint8 : Int8 = -1
-  var uint8: UInt8 = 1
-  var int16 : Int16 = -1
-  var uint16: UInt16 = 1
-  var id:Int = 1
-  var count:UInt = 10
-  var uint64 : UInt64 = 19999999999
-  var int64 : Int64 = -19999999999
-  var ffloat : Float = 1.1
-  var ddouble : Double = 1.1
-  var ddate = NSDate()
-  var str = "test string"
-  var ddata = "test data".dataUsingEncoding(NSUTF8StringEncoding)!
-}
-
-// create a new object
-let o = obj()
- 
-// create the MySQL Table based on the Swift object
-try table.create(o)
-
-// create a table with given primaryKey and auto_increment set to true
-try table.create(o, primaryKey: "id", autoInc: true)
+try connection.exec("USE db")
 ```
 
-#### From a MySQL.Row
-
+#### Prepared
 ```swift
-// create a new Table object with name on a connection
-let table = MySQL.Table(tableName: "createtable_row", connection: con)
-// drop the table if it exists
-try table.drop()
+// Prepare the query
+let stmt : MySQL.Statement = try connection.prepare("SELECT * FROM ?")
 
-// declare a new MySQL.Row with various types
-let obj : MySQL.Row = [
-      "oint": Int?(0),
-      "iint8" : Int8(-1),
-      "uint8": UInt8(1),
-      "int16" : Int16(-1),
-      "uint16": UInt16(100),
-      "id":Int(1),
-      "count":UInt?(10),
-      "uint64" : UInt64(19999999999),
-      "int64" : Int64(-19999999999),
-      "ffloat" : Float(1.1),
-      "ddouble" : Double(1.1),
-      "ddate" : NSDate(dateString: "2015-11-10"),
-      "str" : "test string",
-      "nsdata" : "test data".dataUsingEncoding(NSUTF8StringEncoding)!,
-      "uint8_array" : [UInt8]("test data uint8 array".utf8),
-]
+// Execute the query with arguments
+stmt.exec(["tableName"])
 
-// create the MySQL Table based on MySQL.Row object
-try table.create(obj)
+// Execute the query with arguments and get results
+let results : MySQL.Result = try stmt.query(["tableName"])
 
-// create a table with given primaryKey and auto_increment set to true
-try table.create(o, primaryKey: "id", autoInc: true)
-```
-
-### Insert
-```swift
-try table.insert(o)
-```
-
-### Update
-
-#### Using key
-
-```swift
-o.iint8 = -100
-o.uint8 = 100
-o.int16 = -100
-o.iint32 = -200
-
-try table.update(o, key:"id")
-```
-
-#### Using a key property
-
-```swift
-obj["iint32"] = 4000
-obj["iint16"] = Int16(-100)
-            
-try table.update(obj, key: "id")
-```
-
-### Select
-
-```swift
-// insert 100 objects
-for i in 1...100 {
-    o.str = "test string \(i)"
-    try table.insert(o)
-}
-
-
-// select all rows from the table given a condition
-if let rows = try table.select(Where: ["id=",90, "or id=",91, "or id>",95]) {
-    print(rows)
-}
-
-// select rows specifying the columns we want and a select condition
-if let rows = try table.select(["str", "uint8_array"], Where: ["id=",90, "or id=",91, "or id>",95]) {
-    print(rows)
+for row in results.readAllRows() ?? [] {
+  print(row)
 }
 ```
+
 
 ## Advanced
 
 ### Connection Pool
-
 ```swift
 // create a connection pool with 10 connections using con as prototype
 let connPool = try MySQL.ConnectionPool(num: 10, connection: con)
@@ -194,6 +99,7 @@ for i in 1...500 {
   })
 }
 ```
+
 
 ## License
 Copyright (c) 2015, Marius Corega

@@ -84,7 +84,7 @@ public extension MySQL {
 			data.append(0)
 			
 			// Iteration_count (uint32(1)) [4 bytes]
-			data.append(contentsOf:[1,0,0,0])
+			data.append(contentsOf: [ 1, 0, 0, 0 ])
 			
 			// If args
 			if args.count > 0 {
