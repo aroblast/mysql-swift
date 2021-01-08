@@ -1,0 +1,16 @@
+{
+  "object": {
+    "pins": [
+      {
+        "package": "Socket",
+        "repositoryURL": "https://github.com/aroblast/socket-swift.git",
+        "state": {
+          "branch": "master",
+          "revision": "4cde9fb8fa7ae1174cf57ca8f4207b306bb78635",
+          "version": null
+        }
+      }
+    ]
+  },
+  "version": 1
+}

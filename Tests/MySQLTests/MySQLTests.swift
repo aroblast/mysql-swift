@@ -15,7 +15,7 @@ class MySQLSwiftTest : XCTestCase {
 	override func setUpWithError() throws {
 		// Create connection
 		connection = try MySQL.Connection(
-			address: "eu-cdbr-west-03.cleardb.net",
+			host: "eu-cdbr-west-03.cleardb.net",
 			user: "b1eadad858e1b1",
 			password: "ab3498f5",
 			database: "heroku_9d423e70da80c12"
@@ -27,16 +27,60 @@ class MySQLSwiftTest : XCTestCase {
 		try connection!.close()
 	}
 	
-	// Connection
-	func testConnect() throws {
-		// Open connection
+	// Statements
+	func testExec() throws {
 		try connection!.open()
-		return
+		try connection!.exec("DESCRIBE users")
 	}
 	
-	// Statements
-	func testStatementQuery() throws {
-		let stmt : MySQL.Statement = try connection!.prepare("SELECT * FROM ?")
-		try stmt.exec(["users"])
+	func testQuery() throws {
+		try connection!.open()
+		let result = try connection!.query("SELECT * FROM users")
+		
+		for row in try result.readAllRows()! {
+			print(row)
+		}
+	}
+	
+	func testQueryMultipleResults() throws {
+		try connection!.open()
+		var result = try connection!.query("SELECT * FROM users; SELECT * FROM projects")
+		
+		var shouldRepeat : Bool = false
+		repeat {
+			// Display rows
+			for row in try result.readAllRows()! {
+				print(row)
+			}
+			
+			// Repeat if more results
+			if (result.hasMoreResults) {
+				result = try connection!.nextResult()
+				shouldRepeat = true
+			}
+			else {
+				shouldRepeat = false
+			}
+		} while shouldRepeat
+	}
+	
+	func testPrepareNoArgs() throws {
+		try connection!.open()
+		let stmt : MySQL.Statement = try connection!.prepare("SELECT * FROM users")
+		let result : Result = try stmt.query([])
+		
+		for row in try result.readAllRows()! {
+			print(row)
+		}
+	}
+	
+	func testPrepareArgs() throws {
+		try connection!.open()
+		let stmt : MySQL.Statement = try connection!.prepare("SELECT SQRT(POW(?,2) + POW(?,2)) AS hypotenuse")
+		let result : Result = try stmt.query(["1", "2"])
+		
+		for row in try result.readAllRows()! {
+			print(row)
+		}
 	}
 }

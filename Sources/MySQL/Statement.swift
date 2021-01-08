@@ -1,92 +1,84 @@
 import Foundation
+import Socket
 
 public extension MySQL {
 	
 	class Statement {
 		var connection : Connection
 		
-		var id : UInt32?
-		var paramCount : Int?
-		var columnCount : UInt16?
-		var fields : [Field]?
+		var id : UInt32? = nil
+		var paramCount : Int = 0
+		var columnCount : UInt16 = 0
+		var columns : [Field]? = nil
 		
-		init(connection : Connection){
+		init(connection : Connection) {
 			self.connection = connection
 		}
 		
-		/// Execute query with optional arguments and return its result.
-		open func query(_ args : [Any] = []) throws -> Result {
+		/// Execute prepared query with optional arguments and return result.
+		open func query(_ args : [Any]) throws -> Result {
 			try writeExecutePacket(args)
 			
-			let resultsLen = try connection.readResultSetHeaderPacket()
-			fields = try connection.readColumns(resultsLen)
+			let resultLength = try connection.resultLength()
+			let columns : [Field] = try connection.readColumns(resultLength)
 			
-			return BinaryRow(connection: connection)
+			return BinaryResult(connection: connection, columns: columns)
 		}
 		
 		/// Only execute query with optional arguments.
-		open func exec(_ args:[Any]) throws {
+		open func exec(_ args : [Any]) throws {
 			try writeExecutePacket(args)
 			
-			let resultLen = try connection.readResultSetHeaderPacket()
-			if resultLen > 0 {
+			if (try connection.resultLength() > 0) {
 				try connection.readUntilEOF()
-				// MARK: Code duplicate?
-				// try connection.readUntilEOF()
+				try connection.readUntilEOF()
 			}
 		}
 		
 		/// Read the prepare result response from the socket.
-		func readPrepareResultPacket() throws -> UInt16? {
-			if let data = try connection.socket?.readPacket() {
-				// If error occured
-				if data[0] != 0x00 {
-					throw connection.handleErrorPacket(data)
-				}
-				
-				// Statement id [4 bytes]
-				self.id = data[1..<5].uInt32()
-				
-				// Column count [16 bit uint]
-				self.columnCount = data[5..<7].uInt16()
-				
-				// Param count [16 bit uint]
-				self.paramCount = Int(data[7..<9].uInt16())
-				
-				return self.columnCount
+		func readPrepareResultPacket() throws -> UInt16 {
+			let packet : Packet = try connection.socket.recvPacket(headerLength: 3)
+			if packet.data[0] != 0x00 {
+				throw (connection.errorPacket(packet.data))
 			}
-			else {
-				return 0
-			}
+			
+			// Statement id
+			id = packet.data[1..<5].uInt32()
+			
+			// Column count
+			columnCount = packet.data[5..<7].uInt16()
+			
+			// Param count
+			paramCount = Int(packet.data[7..<9].uInt16())
+			
+			return columnCount
 		}
 		
 		/// Write execute packet to the socket.
 		func writeExecutePacket(_ args: [Any]) throws {
-			// If missing or too much arguments
-			if (args.count != paramCount) {
+			var data = [UInt8]()
+			
+			// If not enough args
+			if args.count != paramCount {
 				throw StatementError.argsCountMismatch
 			}
 			
-			connection.socket?.packetsNumber = -1
-			
-			var data = [UInt8]()
-			
-			// Command [1 byte]
+			// Command
 			data.append(MysqlCommands.COM_STMT_EXECUTE)
-			guard self.id != nil else {
+			guard id != nil else {
 				throw StatementError.stmtIdNotSet
 			}
 			
-			// Statement_id [4 bytes]
-			data.append(contentsOf:[UInt8].UInt32Array(self.id!))
+			// Statement_id
+			data.append(contentsOf:[UInt8].UInt32Array(id!))
 			
-			// Flags (0: CURSOR_TYPE_NO_CURSOR) [1 byte]
+			// Flags (0: CURSOR_TYPE_NO_CURSOR)
 			data.append(0)
 			
-			// Iteration_count (uint32(1)) [4 bytes]
-			data.append(contentsOf: [ 1, 0, 0, 0 ])
+			// Iteration_count (uint32(1))
+			data.append(contentsOf:[1,0,0,0])
 			
-			// If args
+			// Parse arguments
 			if args.count > 0 {
 				let nmLen = (args.count + 7) / 8
 				var nullBitmap = [UInt8](repeating:0, count: nmLen)
@@ -94,32 +86,31 @@ public extension MySQL {
 				for ii in 0..<args.count {
 					let mi = Mirror(reflecting: args[ii])
 					
-					// Check for null value
+					//check for null value
 					if ((mi.displayStyle == .optional) && (mi.children.count == 0)) || args[ii] is NSNull {
+						
 						let nullByte = ii >> 3
 						let nullMask = UInt8(UInt(1) << UInt(ii-(nullByte<<3)))
 						nullBitmap[nullByte] |= nullMask
 					}
 				}
 				
-				// Null Mask
 				data.append(contentsOf: nullBitmap)
-				// Types
 				data.append(1)
 				
 				// Data Type
 				var dataTypeArr = [UInt8]()
 				var argsArr = [UInt8]()
 				
-				for arg in args {
-					let mi = Mirror(reflecting: arg)
+				for v in args {
+					let mi = Mirror(reflecting: v)
 					
-					if ((mi.displayStyle == .optional) && (mi.children.count == 0)) || arg is NSNull {
+					if ((mi.displayStyle == .optional) && (mi.children.count == 0)) || v is NSNull {
 						dataTypeArr += [UInt8].UInt16Array(UInt16(MysqlTypes.MYSQL_TYPE_NULL))
 						continue
 					}
 					else {
-						switch arg {
+						switch v {
 						case let vv as Int64:
 							dataTypeArr += [UInt8].UInt16Array(UInt16(MysqlTypes.MYSQL_TYPE_LONGLONG))
 							argsArr += [UInt8].Int64Array(vv)
@@ -147,17 +138,17 @@ public extension MySQL {
 							
 						case let vv as UInt32:
 							dataTypeArr += [UInt8].UInt16Array(UInt16(MysqlTypes.MYSQL_TYPE_LONG))
-							argsArr += [UInt8].UInt32Array(vv) //vv.array()
+							argsArr += [UInt8].UInt32Array(vv)
 							break
 							
 						case let vv as Int16:
 							dataTypeArr += [UInt8].UInt16Array(UInt16(MysqlTypes.MYSQL_TYPE_SHORT))
-							argsArr +=  [UInt8].Int16Array(Int16(vv)) //vv.array()
+							argsArr +=  [UInt8].Int16Array(Int16(vv))
 							break
 							
 						case let vv as UInt16:
 							dataTypeArr += [UInt8].UInt16Array(UInt16(MysqlTypes.MYSQL_TYPE_SHORT))
-							argsArr += [UInt8].UInt16Array(UInt16(vv)) //vv.array()
+							argsArr += [UInt8].UInt16Array(UInt16(vv))
 							break
 							
 						case let vv as Int8:
@@ -238,11 +229,10 @@ public extension MySQL {
 				data += argsArr
 			}
 			
-			try connection.socket?.writePacket(data)
+			try connection.socket.sendPacket(header: Packet.header(length: data.count, number: 0), data: data)
 		}
 	}
 	
-	// Enums
 	enum StatementError : Error {
 		 case argsCountMismatch
 		 case stmtIdNotSet

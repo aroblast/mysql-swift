@@ -1,6 +1,6 @@
 import Foundation
 
-/// Comparisons for optionals.
+// TODO: Consider refactoring the code to use the non-optional operators.
 fileprivate func < <T : Comparable>(lhs: T?, rhs: T?) -> Bool {
 	switch (lhs, rhs) {
 	case let (l?, r?):
@@ -13,7 +13,41 @@ fileprivate func < <T : Comparable>(lhs: T?, rhs: T?) -> Bool {
 }
 
 extension MySQL {
+	
 	internal struct Utils {
+		static func mysqlType(_ val:Any) ->String {
+			switch val {
+			case is Int8:
+				return "TINYINT"
+			case is UInt8:
+				return "TINYINT UNSIGNED"
+			case is Int16:
+				return "SMALLINT"
+			case is UInt16:
+				return "SMALLINT UNSIGNED"
+			case is Int:
+				return "INT"
+			case is UInt:
+				return "INT UNSIGNED"
+			case is Int64:
+				return "BIGINT"
+			case is UInt64:
+				return "BIGINT UNSIGNED"
+			case is Float:
+				return "FLOAT"
+			case is Double:
+				return "DOUBLE"
+			case is String:
+				return "MEDIUMTEXT"
+			case is Date:
+				return "DATETIME"
+			case is Data:
+				return "LONGBLOB"
+			default:
+				return ""
+			}
+		}
+		
 		fileprivate static func escapeData(_ data:[UInt8]) -> String {
 			var res = [UInt8]()
 			
@@ -45,7 +79,6 @@ extension MySQL {
 					
 				case 0x1A:
 					res += [UInt8]("\\Z".utf8)
-					//    resStr += "\\Z"
 					break
 					
 				default:
@@ -56,8 +89,35 @@ extension MySQL {
 			if let str = NSString(bytes: res, length: res.count, encoding: String.Encoding.ascii.rawValue) {
 				return str as String
 			}
-			
-			return ""
+			else {
+				return ""
+			}
+		}
+		
+		static func stringValue(_ val : Any) -> String {
+			switch val {
+			case is UInt8, is Int8, is Int, is UInt, is UInt16, is Int16, is UInt32, is Int32,
+					 is UInt64, is Int64, is Float, is Double:
+				return "\(val)"
+			case is String:
+				return "\"\(val)\""
+			case is Data:
+				let v = val as! Data
+				
+				let count = v.count / MemoryLayout<UInt8>.size
+				
+				// create an array of Uint8
+				var array = [UInt8](repeating:0, count: count)
+				
+				// copy bytes into array
+				v.copyBytes(to: &array, count:count * MemoryLayout<UInt8>.size)
+				
+				let str = escapeData(array)
+				return "\"\(str)\""
+				
+			default:
+				return ""
+			}
 		}
 		
 		static func skipLenEncStr(_ data:[UInt8]) -> Int {
@@ -80,7 +140,6 @@ extension MySQL {
 		}
 		
 		static func lenEncBin(_ b:[UInt8]) ->([UInt8]?, Int) {
-			
 			var (num, n) = lenEncInt(b)
 			
 			guard num != nil else {
@@ -88,7 +147,6 @@ extension MySQL {
 			}
 			
 			if num < 1 {
-				
 				return (nil, n)
 			}
 			
@@ -104,7 +162,6 @@ extension MySQL {
 		
 		
 		static func lenEncStr(_ b:[UInt8]) ->(String?, Int) {
-			
 			var (num, n) = lenEncInt(b)
 			
 			guard num != nil else {
@@ -112,7 +169,6 @@ extension MySQL {
 			}
 			
 			if num < 1 {
-				
 				return ("", n)
 			}
 			
@@ -121,14 +177,13 @@ extension MySQL {
 			if b.count >= n {
 				var str = Array(b[n-Int(num!)...n-1])
 				str.append(0)
-				return (str.string(), n)
+				return (String(cString: str), n)
 			}
 			
 			return ("", n)
 		}
 		
 		static func lenEncIntArray(_ v:UInt64) -> [UInt8] {
-			
 			if v <= 250 {
 				return [UInt8(v & 0xff)]
 			}
@@ -144,7 +199,6 @@ extension MySQL {
 		}
 		
 		static func lenEncInt(_ b: [UInt8]) -> (UInt64?, Int) {
-			
 			if b.count == 0 {
 				return (nil, 1)
 			}
@@ -180,7 +234,6 @@ extension MySQL {
 		}
 		
 		static func encPasswd(_ pwd:String, scramble:[UInt8]) -> [UInt8]{
-			
 			if pwd.count == 0 {
 				return [UInt8]()
 			}
@@ -245,6 +298,8 @@ public extension Date
 		return nil
 	}
 	
+	
+	
 	init?(dateTimeString : String) {
 		let dateStringFormatter = DateFormatter()
 		dateStringFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
@@ -257,7 +312,9 @@ public extension Date
 		}
 	}
 	
+	
 	init?(dateTimeStringUsec : String) {
+		
 		struct statDFT {
 			static var dateStringFormatter :  DateFormatter? = nil
 			static var token : Int = 0
@@ -293,6 +350,7 @@ public extension Date
 	}
 	
 	func dateTimeString() -> String {
+		
 		struct statDFT {
 			static var dateStringFormatter :  DateFormatter? = nil
 			static var token : Int = 0
@@ -304,6 +362,7 @@ public extension Date
 		
 		return statDFT.dateStringFormatter!.string(from: self)
 	}
+	
 }
 
 extension Int8 {
@@ -441,20 +500,28 @@ extension UInt64 {
 	}
 }
 
+
 extension Sequence where Iterator.Element == UInt8 {
 	func uInt16() -> UInt16 {
-		let arr = self.map {(e) -> UInt8 in return e }
+		let arr = self.map { (elem) -> UInt8 in
+			return elem
+		}
 		return UInt16(arr[1])<<8 | UInt16(arr[0])
 	}
 	
 	func int16() -> Int16 {
-		let arr = self.map {(e) -> UInt8 in return e }
+		let arr = self.map { (elem) -> UInt8 in
+			return elem
+		}
 		return Int16(arr[1])<<8 | Int16(arr[0])
 	}
 	
+	
 	func uInt24() -> UInt32 {
-		let arr = self.map {(e) -> UInt8 in return e }
-		return UInt32(arr[2]) << 16 | UInt32(arr[1]) << 8 | UInt32(arr[0])
+		let arr = self.map { (elem) -> UInt8 in
+			return elem
+		}
+		return UInt32(arr[2])<<16 | UInt32(arr[1])<<8 | UInt32(arr[0])
 	}
 	
 	func int32() -> Int32 {
@@ -533,21 +600,7 @@ extension Sequence where Iterator.Element == UInt8 {
 		return f
 	}
 	
-	func string() -> String? {
-		let arr = self.map { (elem) -> UInt8 in
-			return elem
-		}
-		
-		guard (arr.count > 0) && (arr[arr.count-1] == 0) else {
-			return ""
-		}
-		
-		return String(cString: withUnsafePointer(to: arr[0]) { UnsafePointer<UInt8>($0) })
-	}
-	
 	static func UInt24Array(_ val: UInt32) -> [UInt8]{
-		
-		
 		var byteArray = [UInt8](repeating: 0, count: 3)
 		
 		for i in 0...2 {
@@ -592,6 +645,7 @@ extension Sequence where Iterator.Element == UInt8 {
 		return byteArray
 	}
 	
+	
 	static func UInt32Array(_ val: UInt32) -> [UInt8]{
 		var byteArray = [UInt8](repeating:0, count: 4)
 		
@@ -622,6 +676,7 @@ extension Sequence where Iterator.Element == UInt8 {
 		return byteArray
 	}
 	
+	
 	static func IntArray(_ val: Int) -> [UInt8]{
 		var byteArray = [UInt8](repeating:0, count: 4)
 		
@@ -651,4 +706,5 @@ extension Sequence where Iterator.Element == UInt8 {
 		
 		return byteArray
 	}
+	
 }

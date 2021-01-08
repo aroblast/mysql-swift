@@ -26,7 +26,7 @@ public extension MySQL {
 			// Init all connections
 			for _ in 0..<count {
 				let current : Connection = try MySQL.Connection(
-					address: poolConnection.address,
+					host: poolConnection.host,
 					user: poolConnection.user,
 					password: poolConnection.password,
 					database: poolConnection.database
@@ -54,7 +54,7 @@ public extension MySQL {
 				// If all connections used create a new one
 				if (result == nil) {
 					let connection = try? MySQL.Connection(
-						address: poolConnection.address,
+						host: poolConnection.host,
 						user: poolConnection.user,
 						password: poolConnection.password,
 						database: poolConnection.database

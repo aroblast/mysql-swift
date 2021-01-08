@@ -1,3 +1,21 @@
+//
+//  sha1.swift
+//  mysql_driver
+//
+//  Created by cipi on 22/12/15.
+
+//
+//  Based on 
+//  CryptoSwift
+//
+//  Created by Marcin Krzyzanowski on 16/08/14.
+//  Copyright (c) 2014 Marcin Krzyzanowski. All rights reserved.
+//
+
+
+
+
+/* array of bytes */
 extension Int {
     /** Array of bytes with optional padding (little-endian) */
     public func bytes(_ totalBytes: Int = MemoryLayout<Int>.size) -> [UInt8] {
@@ -50,7 +68,6 @@ func arrayOfBytes<T: BinaryInteger>(_ value: T, length totalBytes: Int = MemoryL
         bytes[totalBytes - 1 - j] = (bytesPointer + j).pointee
     }
     
-		valuePointer.deinitialize(count: 1)
     valuePointer.deallocate()
     
     return bytes

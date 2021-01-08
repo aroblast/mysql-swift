@@ -1,155 +1,146 @@
 import Foundation
+import Socket
 
 public protocol Result {
-	init(connection : MySQL.Connection)
-	
-	func readRow() throws -> MySQL.Row?
-	func readAllRows() throws -> [MySQL.ResultSet]?
-}
+	var EOFfound : Bool { get }
+	var hasMoreResults : Bool { get }
 
-public protocol RowType {
-	init(dict : MySQL.Row)
+	func readRow() throws -> MySQL.Row?
+	func readAllRows() throws -> [MySQL.Row]?
 }
 
 extension MySQL {
-	public typealias Row = [String:Any]
-	public typealias ResultSet = [Row]
+	
+	public typealias Row = [String : Any]
 	
 	/// Row composed of human-readable values.
-	class TextRow: Result {
-		var connection : Connection
+	class TextResult : Result {
+		let columns : [Field]
+		let connection : Connection
 		
-		required init(connection : Connection) {
+		var EOFfound : Bool = false
+		var hasMoreResults : Bool = false
+		
+		required init(connection : Connection, columns : [Field]) {
 			self.connection = connection
+			self.columns = columns
 		}
 		
 		/// Read current row.
-		func readRow() throws -> MySQL.Row?{
-			// Check if socket is connected
-			guard connection.isConnected == true else {
-				throw Connection.ConnectionError.notConnected
+		func readRow() throws -> Row? {
+			// If no columns
+			if columns.count == 0 {
+				hasMoreResults = false
+				EOFfound = true
 			}
 			
-			// If columns have no results
-			if connection.columns?.count == 0 {
-				connection.hasMoreResults = false
-				connection.EOFfound = true
+			if !EOFfound, columns.count > 0 {
+				// Get result packet
+				let packet : Packet = try connection.socket.recvPacket(headerLength: 3)
 				
-				return nil
-			}
-			
-			// If not EOF
-			if !connection.EOFfound, let columns = connection.columns, columns.count > 0, let data = try connection.socket?.readPacket()  {
-				// EOF packet
-				if (data[0] == 0xfe) && (data.count == 5) {
-					connection.EOFfound = true
-					let flags = Array(data[3..<5]).uInt16()
+				// Check if last packet
+				if (packet.data[0] == 0xfe) && (packet.data.count == 5) {
+					EOFfound = true
 					
-					if ((flags & MysqlServerStatus.SERVER_MORE_RESULTS_EXISTS) == MysqlServerStatus.SERVER_MORE_RESULTS_EXISTS) {
-						connection.hasMoreResults = true
-					}
-					else {
-						connection.hasMoreResults = false
-					}
+					// Check if more results exist
+					let flags = Array(packet.data[3..<5]).uInt16()
+					hasMoreResults = (flags & MysqlServerStatus.SERVER_MORE_RESULTS_EXISTS) == MysqlServerStatus.SERVER_MORE_RESULTS_EXISTS
 					
 					return nil
 				}
 				
-				// Error packet
-				if data[0] == 0xff {
-					throw connection.handleErrorPacket(data)
+				// Check no error packet
+				if packet.data[0] == 0xff {
+					throw connection.errorPacket(packet.data)
 				}
 				
 				var row = Row()
 				var pos = 0
 				
 				// For each column
-				if columns.count > 0 {
-					for i in 0..<columns.count {
-						let (name, n) = MySQL.Utils.lenEncStr(Array(data[pos..<data.count]))
-						pos += n
-						
-						// Read and interpret type for value
-						if let val = name {
-							switch columns[i].fieldType {
-							case MysqlTypes.MYSQL_TYPE_VAR_STRING:
-								row[columns[i].name] = name
-								break
-								
-							case MysqlTypes.MYSQL_TYPE_LONGLONG:
-								if ((columns[i].flags & MysqlFieldFlag.UNSIGNED) == MysqlFieldFlag.UNSIGNED) {
-									row[columns[i].name] = UInt64(val)
-									break
-								}
-								
-								row[columns[i].name] = Int64(val)
-								break
-								
-								
-							case MysqlTypes.MYSQL_TYPE_LONG, MysqlTypes.MYSQL_TYPE_INT24:
-								if ((columns[i].flags & MysqlFieldFlag.UNSIGNED) == MysqlFieldFlag.UNSIGNED) {
-									row[columns[i].name] = UInt(val)
-									break
-								}
-								
-								row[columns[i].name] = Int(val)
-								break
-								
-							case MysqlTypes.MYSQL_TYPE_SHORT:
-								if ((columns[i].flags & MysqlFieldFlag.UNSIGNED) == MysqlFieldFlag.UNSIGNED) {
-									row[columns[i].name] = UInt16(val)
-									break
-								}
-								row[columns[i].name] = Int16(val)
-								break
-								
-							case MysqlTypes.MYSQL_TYPE_TINY:
-								if ((columns[i].flags & MysqlFieldFlag.UNSIGNED) == MysqlFieldFlag.UNSIGNED) {
-									row[columns[i].name] = UInt8(val)
-									break
-								}
-								
-								row[columns[i].name] = Int8(val)
-								break
-								
-								
-							case MysqlTypes.MYSQL_TYPE_DOUBLE:
-								row[columns[i].name] = Double(val)
-								break
-								
-							case MysqlTypes.MYSQL_TYPE_FLOAT:
-								row[columns[i].name] = Float(val)
-								break
-								
-							case MysqlTypes.MYSQL_TYPE_DATE:
-								row[columns[i].name] = Date(dateString: String(val))
-								break
-								
-							case MysqlTypes.MYSQL_TYPE_TIME:
-								row[columns[i].name] = Date(timeString: String(val))
-								break
-								
-							case MysqlTypes.MYSQL_TYPE_DATETIME:
-								row[columns[i].name] = Date(dateTimeString: String(val))
-								break
-								
-							case MysqlTypes.MYSQL_TYPE_TIMESTAMP:
-								
-								row[columns[i].name] = Date(dateTimeString: String(val))
-								break
-								
-							case MysqlTypes.MYSQL_TYPE_NULL:
-								row[columns[i].name] = NSNull()
-								break
-								
-							default:
-								row[columns[i].name] = NSNull()
+				for column in columns {
+					// Get column value
+					let (value, n) = MySQL.Utils.lenEncStr(Array(packet.data[pos..<packet.data.count]))
+					pos += n
+					
+					// If value not nil
+					if value != nil {
+						switch column.fieldType {
+						case MysqlTypes.MYSQL_TYPE_VAR_STRING:
+							row[column.name] = value
+							break
+							
+						case MysqlTypes.MYSQL_TYPE_LONGLONG:
+							if column.flags & MysqlFieldFlag.UNSIGNED == MysqlFieldFlag.UNSIGNED {
+								row[column.name] = UInt64(value!)
 								break
 							}
+							row[column.name] = Int64(value!)
+							break
+							
+							
+						case MysqlTypes.MYSQL_TYPE_LONG, MysqlTypes.MYSQL_TYPE_INT24:
+							if column.flags & MysqlFieldFlag.UNSIGNED == MysqlFieldFlag.UNSIGNED {
+								row[column.name] = UInt(value!)
+								break
+							}
+							row[column.name] = Int(value!)
+							break
+							
+						case MysqlTypes.MYSQL_TYPE_SHORT:
+							if column.flags & MysqlFieldFlag.UNSIGNED == MysqlFieldFlag.UNSIGNED {
+								row[column.name] = UInt16(value!)
+								break
+							}
+							row[column.name] = Int16(value!)
+							break
+							
+						case MysqlTypes.MYSQL_TYPE_TINY:
+							if column.flags & MysqlFieldFlag.UNSIGNED == MysqlFieldFlag.UNSIGNED {
+								row[column.name] = UInt8(value!)
+								break
+							}
+							row[column.name] = Int8(value!)
+							break
+							
+							
+						case MysqlTypes.MYSQL_TYPE_DOUBLE:
+							row[column.name] = Double(value!)
+							break
+							
+						case MysqlTypes.MYSQL_TYPE_FLOAT:
+							row[column.name] = Float(value!)
+							break
+							
+						case MysqlTypes.MYSQL_TYPE_DATE:
+							row[column.name] = Date(dateString: String(value!))
+							break
+							
+						case MysqlTypes.MYSQL_TYPE_TIME:
+							row[column.name] = Date(timeString: String(value!))
+							break
+							
+						case MysqlTypes.MYSQL_TYPE_DATETIME:
+							row[column.name] = Date(dateTimeString: String(value!))
+							break
+							
+						case MysqlTypes.MYSQL_TYPE_TIMESTAMP:
+							
+							row[column.name] = Date(dateTimeString: String(value!))
+							break
+							
+						case MysqlTypes.MYSQL_TYPE_NULL:
+							row[column.name] = NSNull()
+							break
+							
+						default:
+							row[column.name] = NSNull()
+							break
 						}
-						else {
-							row[columns[i].name] = NSNull()
-						}
+						
+					}
+					else {
+						row[column.name] = NSNull()
 					}
 				}
 				
@@ -160,94 +151,71 @@ extension MySQL {
 			}
 		}
 		
-		/// Read all rows.
-		func readAllRows() throws -> [ResultSet]? {
-			var result = [ResultSet]()
+		func readAllRows() throws -> [Row]? {
+			var result = [Row]()
 			
-			repeat {
-				// If more results exists
-				if connection.hasMoreResults {
-					try connection.nextResult()
-				}
-				
-				// Read row
-				var rows = ResultSet()
-				while let row = try readRow() {
-					rows.append(row)
-				}
-				
-				// If row not empty
-				if (rows.count > 0){
-					result.append(rows)
-				}
-				
-			} while connection.hasMoreResults
+			// While row exists
+			while let row = try readRow() {
+				result.append(row)
+			}
 			
 			return result
 		}
 	}
 	
-	/// Row composed of binary values.
-	class BinaryRow: Result {
-		fileprivate var connection : Connection
+	class BinaryResult : Result {
+		var columns : [Field]
+		var connection: Connection
 		
-		required init(connection : Connection) {
+		var EOFfound : Bool = false
+		var hasMoreResults : Bool = false
+		
+		required init(connection : Connection, columns : [Field]) {
 			self.connection = connection
+			self.columns = columns
 		}
 		
-		/// Read current row.
 		func readRow() throws -> MySQL.Row?{
-			// Check if socket is connected
-			guard connection.isConnected == true else {
-				throw Connection.ConnectionError.notConnected
+			if columns.count == 0 {
+				hasMoreResults = false
+				EOFfound = true
 			}
 			
-			// If columns have no results
-			if connection.columns?.count == 0 {
-				connection.hasMoreResults = false
-				connection.EOFfound = true
-			}
-			
-			// If not EOF
-			if !connection.EOFfound, let columns = connection.columns, columns.count > 0, let data = try connection.socket?.readPacket() {
+			if !EOFfound, columns.count > 0 {
+				let packet : Packet = try connection.socket.recvPacket(headerLength: 3)
+				
 				// Success packet
-				if data[0] != 0x00 {
+				if packet.data[0] != 0x00 {
 					// EOF Packet
-					if (data[0] == 0xfe) && (data.count == 5) {
-						connection.EOFfound = true
-						let flags = Array(data[3..<5]).uInt16()
+					if (packet.data[0] == 0xfe) && (packet.data.count == 5) {
+						EOFfound = true
 						
-						if flags & MysqlServerStatus.SERVER_MORE_RESULTS_EXISTS == MysqlServerStatus.SERVER_MORE_RESULTS_EXISTS {
-							connection.hasMoreResults = true
-						}
-						else {
-							connection.hasMoreResults = false
-						}
+						// Check if more results exist
+						let flags = Array(packet.data[3..<5]).uInt16()
+						hasMoreResults = (flags & MysqlServerStatus.SERVER_MORE_RESULTS_EXISTS) == MysqlServerStatus.SERVER_MORE_RESULTS_EXISTS
 						
 						return nil
 					}
 					
 					// Error packet
-					if data[0] == 0xff {
-						throw connection.handleErrorPacket(data)
+					if packet.data[0] == 0xff {
+						throw connection.errorPacket(packet.data)
 					}
 					
-					if (data[0] > 0 && data[0] < 251) {
-						// MARK: Result set header packet.
-						//Utils.le
+					if packet.data[0] > 0 && packet.data[0] < 251 {
+						// Result set header packet
 					}
 					else {
 						return nil
 					}
-					
 				}
 				
 				var pos = 1 + (columns.count + 7 + 2)>>3
-				let nullBitmap = Array(data[1..<pos])
+				let nullBitmap = Array(packet.data[1..<pos])
 				var row = Row()
 				
-				// For each column
 				for i in 0..<columns.count {
+					
 					let idx = (i+2)>>3
 					let shiftval = UInt8((i+2)&7)
 					let val = nullBitmap[idx] >> shiftval
@@ -258,61 +226,62 @@ extension MySQL {
 					}
 					
 					switch columns[i].fieldType {
+					
 					case MysqlTypes.MYSQL_TYPE_NULL:
 						row[columns[i].name] = NSNull()
 						break
 						
 					case MysqlTypes.MYSQL_TYPE_TINY:
-						if ((columns[i].flags & MysqlFieldFlag.UNSIGNED) == MysqlFieldFlag.UNSIGNED) {
-							row[columns[i].name] = UInt8(data[pos..<pos+1])
+						if columns[i].flags & MysqlFieldFlag.UNSIGNED == MysqlFieldFlag.UNSIGNED {
+							row[columns[i].name] = UInt8(packet.data[pos..<pos+1])
 							pos += 1
 							break
 						}
+						row[columns[i].name] = Int8(packet.data[pos..<pos+1])
 						
-						row[columns[i].name] = Int8(data[pos..<pos+1])
 						pos += 1
 						break
 						
 					case MysqlTypes.MYSQL_TYPE_SHORT:
-						if ((columns[i].flags & MysqlFieldFlag.UNSIGNED) == MysqlFieldFlag.UNSIGNED) {
-							row[columns[i].name] = UInt16(data[pos..<pos+2])
+						if columns[i].flags & MysqlFieldFlag.UNSIGNED == MysqlFieldFlag.UNSIGNED {
+							row[columns[i].name] = UInt16(packet.data[pos..<pos+2])
 							pos += 2
 							break
 						}
+						row[columns[i].name] = Int16(packet.data[pos..<pos+2])
 						
-						row[columns[i].name] = Int16(data[pos..<pos+2])
 						pos += 2
 						break
 						
 					case MysqlTypes.MYSQL_TYPE_INT24, MysqlTypes.MYSQL_TYPE_LONG:
-						if ((columns[i].flags & MysqlFieldFlag.UNSIGNED) == MysqlFieldFlag.UNSIGNED) {
-							row[columns[i].name] = UInt(UInt32(data[pos..<pos+4]))
+						if columns[i].flags & MysqlFieldFlag.UNSIGNED == MysqlFieldFlag.UNSIGNED {
+							row[columns[i].name] = UInt(UInt32(packet.data[pos..<pos+4]))
 							pos += 4
 							break
 						}
+						row[columns[i].name] = Int(Int32(packet.data[pos..<pos+4]))
 						
-						row[columns[i].name] = Int(Int32(data[pos..<pos+4]))
 						pos += 4
 						break
 						
 					case MysqlTypes.MYSQL_TYPE_LONGLONG:
-						if ((columns[i].flags & MysqlFieldFlag.UNSIGNED) == MysqlFieldFlag.UNSIGNED) {
-							row[columns[i].name] = UInt64(data[pos..<pos+8])
+						if columns[i].flags & MysqlFieldFlag.UNSIGNED == MysqlFieldFlag.UNSIGNED {
+							row[columns[i].name] = UInt64(packet.data[pos..<pos+8])
 							pos += 8
 							break
 						}
+						row[columns[i].name] = Int64(packet.data[pos..<pos+8])
 						
-						row[columns[i].name] = Int64(data[pos..<pos+8])
 						pos += 8
 						break
 						
 					case MysqlTypes.MYSQL_TYPE_FLOAT:
-						row[columns[i].name] = data[pos..<pos+4].float32()
+						row[columns[i].name] = packet.data[pos..<pos+4].float32()
 						pos += 4
 						break
 						
 					case MysqlTypes.MYSQL_TYPE_DOUBLE:
-						row[columns[i].name] = data[pos..<pos+8].float64()
+						row[columns[i].name] = packet.data[pos..<pos+8].float64()
 						pos += 8
 						break
 						
@@ -321,13 +290,13 @@ extension MySQL {
 							 MysqlTypes.MYSQL_TYPE_BLOB:
 						
 						if columns[i].charSetNr == 63 {
-							let (bres, n) = MySQL.Utils.lenEncBin(Array(data[pos..<data.count]))
+							let (bres, n) = MySQL.Utils.lenEncBin(Array(packet.data[pos..<packet.data.count]))
 							row[columns[i].name] = bres
 							pos += n
 							
 						}
 						else {
-							let (str, n) = MySQL.Utils.lenEncStr(Array(data[pos..<data.count]))
+							let (str, n) = MySQL.Utils.lenEncStr(Array(packet.data[pos..<packet.data.count]))
 							row[columns[i].name] = str
 							pos += n
 						}
@@ -337,13 +306,13 @@ extension MySQL {
 							 MysqlTypes.MYSQL_TYPE_BIT, MysqlTypes.MYSQL_TYPE_ENUM, MysqlTypes.MYSQL_TYPE_SET,
 							 MysqlTypes.MYSQL_TYPE_GEOMETRY:
 						
-						let (str, n) = MySQL.Utils.lenEncStr(Array(data[pos..<data.count]))
+						let (str, n) = MySQL.Utils.lenEncStr(Array(packet.data[pos..<packet.data.count]))
 						row[columns[i].name] = str
 						pos += n
 						break
 						
 					case MysqlTypes.MYSQL_TYPE_DATE:
-						let (dlen, n) = MySQL.Utils.lenEncInt(Array(data[pos..<data.count]))
+						let (dlen, n) = MySQL.Utils.lenEncInt(Array(packet.data[pos..<packet.data.count]))
 						
 						guard dlen != nil else {
 							row[columns[i].name] = NSNull()
@@ -361,9 +330,9 @@ extension MySQL {
 							fallthrough
 						case 4:
 							// 2015-12-02
-							y = Int(data[pos+1..<pos+3].uInt16())
-							mo = Int(data[pos+3])
-							d = Int(data[pos+4])
+							y = Int(packet.data[pos+1..<pos+3].uInt16())
+							mo = Int(packet.data[pos+3])
+							d = Int(packet.data[pos+4])
 							res = Date(dateString: String(format: "%4d-%02d-%02d", arguments: [y, mo, d]))
 							break
 						default:break
@@ -375,7 +344,7 @@ extension MySQL {
 						break
 						
 					case MysqlTypes.MYSQL_TYPE_TIME:
-						let (dlen, n) = MySQL.Utils.lenEncInt(Array(data[pos..<data.count]))
+						let (dlen, n) = MySQL.Utils.lenEncInt(Array(packet.data[pos..<packet.data.count]))
 						
 						guard dlen != nil else {
 							row[columns[i].name] = NSNull()
@@ -387,13 +356,13 @@ extension MySQL {
 						switch Int(dlen!) {
 						case 12:
 							//12:03:15.000 001
-							u = Int(data[pos+9..<pos+13].uInt32())
+							u = Int(packet.data[pos+9..<pos+13].uInt32())
 							fallthrough
 						case 8:
 							//12:03:15
-							h = Int(data[pos+6])
-							m = Int(data[pos+7])
-							s = Int(data[pos+8])
+							h = Int(packet.data[pos+6])
+							m = Int(packet.data[pos+7])
+							s = Int(packet.data[pos+8])
 							res = Date(timeStringUsec:String(format: "%02d:%02d:%02d.%06d", arguments: [h, m, s, u]))
 							break
 						default:
@@ -407,31 +376,30 @@ extension MySQL {
 						break
 						
 					case MysqlTypes.MYSQL_TYPE_TIMESTAMP, MysqlTypes.MYSQL_TYPE_DATETIME:
-						
-						let (dlen, n) = MySQL.Utils.lenEncInt(Array(data[pos..<data.count]))
+						let (dlen, n) = MySQL.Utils.lenEncInt(Array(packet.data[pos..<packet.data.count]))
 						
 						guard dlen != nil else {
 							row[columns[i].name] = NSNull()
 							break
 						}
+						
 						var y = 0, mo = 0, d = 0, h = 0, m = 0, s = 0, u = 0
 						
 						switch Int(dlen!) {
 						case 11:
-							// 2015-12-02 12:03:15.001004005
-							u = Int(data[pos+8..<pos+12].uInt32())
+							u = Int(packet.data[pos+8..<pos+12].uInt32())
 							fallthrough
 						case 7:
 							// 2015-12-02 12:03:15
-							h = Int(data[pos+5])
-							m = Int(data[pos+6])
-							s = Int(data[pos+7])
+							h = Int(packet.data[pos+5])
+							m = Int(packet.data[pos+6])
+							s = Int(packet.data[pos+7])
 							fallthrough
 						case 4:
 							// 2015-12-02
-							y = Int(data[pos+1..<pos+3].uInt16())
-							mo = Int(data[pos+3])
-							d = Int(data[pos+4])
+							y = Int(packet.data[pos+1..<pos+3].uInt16())
+							mo = Int(packet.data[pos+3])
+							d = Int(packet.data[pos+4])
 							break
 							
 						default:break
@@ -450,59 +418,17 @@ extension MySQL {
 				}
 				return row
 			}
-			else {
-				return nil
+			
+			return nil
+		}
+		
+		func readAllRows() throws -> [Row]? {
+			var result = [Row]()
+			
+			// For each result
+			while let row = try readRow() {
+				result.append(row)
 			}
-		}
-		
-		/// Read row of a specific type
-		func readRow<T : RowType>() throws -> T? {
-			let result = try readRow()
-			return T(dict:result!)
-		}
-		
-		/// Read all rows.
-		func readAllRows() throws -> [ResultSet]? {
-			var result = [ResultSet]()
-			
-			repeat {
-				// If result has more than one row
-				if connection.hasMoreResults {
-					try connection.nextResult()
-				}
-				
-				var rows = ResultSet()
-				while let row = try readRow() {
-					rows.append(row)
-				}
-				
-				if (rows.count > 0){
-					result.append(rows)
-				}
-			} while connection.hasMoreResults
-			
-			return result
-		}
-		
-		/// Read all rows of specific type.
-		func readAllRows<T : RowType>() throws -> [[T]]? {
-			var result = [[T]]()
-			
-			repeat {
-				// If result has more than one row
-				if connection.hasMoreResults {
-					try connection.nextResult()
-				}
-				
-				var rows = [T]()
-				while let row = try readRow() as? T {
-					rows.append(row)
-				}
-				
-				if (rows.count > 0){
-					result.append(rows)
-				}
-			} while connection.hasMoreResults
 			
 			return result
 		}
