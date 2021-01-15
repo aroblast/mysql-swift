@@ -10,8 +10,13 @@ public protocol Result {
 }
 
 extension MySQL {
+
+	public class Row : Identifiable {
+		public let id : UUID = UUID()
+		public var values : [String : Any] = [:]
+	}
 	
-	public typealias Row = [String : Any]
+	//public typealias Row = [String : Any]
 	
 	/// Row composed of human-readable values.
 	class TextResult : Result {
@@ -34,7 +39,7 @@ extension MySQL {
 				EOFfound = true
 			}
 			
-			if !EOFfound, columns.count > 0 {
+			if (!EOFfound && columns.count > 0) {
 				// Get result packet
 				let packet : Packet = try connection.socket.recvPacket(headerLength: 3)
 				
@@ -54,93 +59,102 @@ extension MySQL {
 					throw connection.errorPacket(packet.data)
 				}
 				
-				var row = Row()
+				let row = Row()
 				var pos = 0
 				
 				// For each column
 				for column in columns {
-					// Get column value
+					// Get row column value
 					let (value, n) = MySQL.Utils.lenEncStr(Array(packet.data[pos..<packet.data.count]))
 					pos += n
 					
 					// If value not nil
-					if value != nil {
+					if (value != nil) {
 						switch column.fieldType {
 						case MysqlTypes.MYSQL_TYPE_VAR_STRING:
-							row[column.name] = value
+							row.values[column.name] = value
 							break
 							
 						case MysqlTypes.MYSQL_TYPE_LONGLONG:
+							// Unsigned
 							if column.flags & MysqlFieldFlag.UNSIGNED == MysqlFieldFlag.UNSIGNED {
-								row[column.name] = UInt64(value!)
+								row.values[column.name] = UInt64(value!)
 								break
 							}
-							row[column.name] = Int64(value!)
+							
+							row.values[column.name] = Int64(value!)
 							break
 							
-							
 						case MysqlTypes.MYSQL_TYPE_LONG, MysqlTypes.MYSQL_TYPE_INT24:
+							// Unsigned
 							if column.flags & MysqlFieldFlag.UNSIGNED == MysqlFieldFlag.UNSIGNED {
-								row[column.name] = UInt(value!)
+								row.values[column.name] = UInt(value!)
 								break
 							}
-							row[column.name] = Int(value!)
+							
+							row.values[column.name] = Int(value!)
 							break
 							
 						case MysqlTypes.MYSQL_TYPE_SHORT:
+							// Unsigned
 							if column.flags & MysqlFieldFlag.UNSIGNED == MysqlFieldFlag.UNSIGNED {
-								row[column.name] = UInt16(value!)
+								row.values[column.name] = UInt16(value!)
 								break
 							}
-							row[column.name] = Int16(value!)
+							
+							row.values[column.name] = Int16(value!)
 							break
 							
 						case MysqlTypes.MYSQL_TYPE_TINY:
+							// Unsigned
 							if column.flags & MysqlFieldFlag.UNSIGNED == MysqlFieldFlag.UNSIGNED {
-								row[column.name] = UInt8(value!)
+								row.values[column.name] = UInt8(value!)
 								break
 							}
-							row[column.name] = Int8(value!)
+							
+							row.values[column.name] = Int8(value!)
 							break
 							
-							
 						case MysqlTypes.MYSQL_TYPE_DOUBLE:
-							row[column.name] = Double(value!)
+							row.values[column.name] = Double(value!)
 							break
 							
 						case MysqlTypes.MYSQL_TYPE_FLOAT:
-							row[column.name] = Float(value!)
+							row.values[column.name] = Float(value!)
 							break
 							
 						case MysqlTypes.MYSQL_TYPE_DATE:
-							row[column.name] = Date(dateString: String(value!))
+							// MARK: Custom made conversion
+							row.values[column.name] = Date(dateString: String(value!))
 							break
 							
 						case MysqlTypes.MYSQL_TYPE_TIME:
-							row[column.name] = Date(timeString: String(value!))
+							// MARK: Custom made conversion
+							row.values[column.name] = Date(timeString: String(value!))
 							break
 							
 						case MysqlTypes.MYSQL_TYPE_DATETIME:
-							row[column.name] = Date(dateTimeString: String(value!))
+							// MARK: Custom made conversion
+							row.values[column.name] = Date(dateTimeString: String(value!))
 							break
 							
 						case MysqlTypes.MYSQL_TYPE_TIMESTAMP:
-							
-							row[column.name] = Date(dateTimeString: String(value!))
+							// MARK: Custom made conversion
+							row.values[column.name] = Date(dateTimeString: String(value!))
 							break
 							
 						case MysqlTypes.MYSQL_TYPE_NULL:
-							row[column.name] = NSNull()
+							row.values[column.name] = NSNull()
 							break
 							
 						default:
-							row[column.name] = NSNull()
+							// MARK: Default conversion to nil
+							row.values[column.name] = NSNull()
 							break
 						}
-						
 					}
 					else {
-						row[column.name] = NSNull()
+						row.values[column.name] = NSNull()
 					}
 				}
 				
@@ -212,7 +226,7 @@ extension MySQL {
 				
 				var pos = 1 + (columns.count + 7 + 2)>>3
 				let nullBitmap = Array(packet.data[1..<pos])
-				var row = Row()
+				let row = Row()
 				
 				for i in 0..<columns.count {
 					
@@ -221,67 +235,67 @@ extension MySQL {
 					let val = nullBitmap[idx] >> shiftval
 					
 					if (val & 1) == 1 {
-						row[columns[i].name] = NSNull()
+						row.values[columns[i].name] = NSNull()
 						continue
 					}
 					
 					switch columns[i].fieldType {
 					
 					case MysqlTypes.MYSQL_TYPE_NULL:
-						row[columns[i].name] = NSNull()
+						row.values[columns[i].name] = NSNull()
 						break
 						
 					case MysqlTypes.MYSQL_TYPE_TINY:
 						if columns[i].flags & MysqlFieldFlag.UNSIGNED == MysqlFieldFlag.UNSIGNED {
-							row[columns[i].name] = UInt8(packet.data[pos..<pos+1])
+							row.values[columns[i].name] = UInt8(packet.data[pos..<pos+1])
 							pos += 1
 							break
 						}
-						row[columns[i].name] = Int8(packet.data[pos..<pos+1])
+						row.values[columns[i].name] = Int8(packet.data[pos..<pos+1])
 						
 						pos += 1
 						break
 						
 					case MysqlTypes.MYSQL_TYPE_SHORT:
 						if columns[i].flags & MysqlFieldFlag.UNSIGNED == MysqlFieldFlag.UNSIGNED {
-							row[columns[i].name] = UInt16(packet.data[pos..<pos+2])
+							row.values[columns[i].name] = UInt16(packet.data[pos..<pos+2])
 							pos += 2
 							break
 						}
-						row[columns[i].name] = Int16(packet.data[pos..<pos+2])
+						row.values[columns[i].name] = Int16(packet.data[pos..<pos+2])
 						
 						pos += 2
 						break
 						
 					case MysqlTypes.MYSQL_TYPE_INT24, MysqlTypes.MYSQL_TYPE_LONG:
 						if columns[i].flags & MysqlFieldFlag.UNSIGNED == MysqlFieldFlag.UNSIGNED {
-							row[columns[i].name] = UInt(UInt32(packet.data[pos..<pos+4]))
+							row.values[columns[i].name] = UInt(UInt32(packet.data[pos..<pos+4]))
 							pos += 4
 							break
 						}
-						row[columns[i].name] = Int(Int32(packet.data[pos..<pos+4]))
+						row.values[columns[i].name] = Int(Int32(packet.data[pos..<pos+4]))
 						
 						pos += 4
 						break
 						
 					case MysqlTypes.MYSQL_TYPE_LONGLONG:
 						if columns[i].flags & MysqlFieldFlag.UNSIGNED == MysqlFieldFlag.UNSIGNED {
-							row[columns[i].name] = UInt64(packet.data[pos..<pos+8])
+							row.values[columns[i].name] = UInt64(packet.data[pos..<pos+8])
 							pos += 8
 							break
 						}
-						row[columns[i].name] = Int64(packet.data[pos..<pos+8])
+						row.values[columns[i].name] = Int64(packet.data[pos..<pos+8])
 						
 						pos += 8
 						break
 						
 					case MysqlTypes.MYSQL_TYPE_FLOAT:
-						row[columns[i].name] = packet.data[pos..<pos+4].float32()
+						row.values[columns[i].name] = packet.data[pos..<pos+4].float32()
 						pos += 4
 						break
 						
 					case MysqlTypes.MYSQL_TYPE_DOUBLE:
-						row[columns[i].name] = packet.data[pos..<pos+8].float64()
+						row.values[columns[i].name] = packet.data[pos..<pos+8].float64()
 						pos += 8
 						break
 						
@@ -291,13 +305,13 @@ extension MySQL {
 						
 						if columns[i].charSetNr == 63 {
 							let (bres, n) = MySQL.Utils.lenEncBin(Array(packet.data[pos..<packet.data.count]))
-							row[columns[i].name] = bres
+							row.values[columns[i].name] = bres
 							pos += n
 							
 						}
 						else {
 							let (str, n) = MySQL.Utils.lenEncStr(Array(packet.data[pos..<packet.data.count]))
-							row[columns[i].name] = str
+							row.values[columns[i].name] = str
 							pos += n
 						}
 						break
@@ -307,7 +321,7 @@ extension MySQL {
 							 MysqlTypes.MYSQL_TYPE_GEOMETRY:
 						
 						let (str, n) = MySQL.Utils.lenEncStr(Array(packet.data[pos..<packet.data.count]))
-						row[columns[i].name] = str
+						row.values[columns[i].name] = str
 						pos += n
 						break
 						
@@ -315,7 +329,7 @@ extension MySQL {
 						let (dlen, n) = MySQL.Utils.lenEncInt(Array(packet.data[pos..<packet.data.count]))
 						
 						guard dlen != nil else {
-							row[columns[i].name] = NSNull()
+							row.values[columns[i].name] = NSNull()
 							break
 						}
 						var y = 0, mo = 0, d = 0
@@ -338,7 +352,7 @@ extension MySQL {
 						default:break
 						}
 						
-						row[columns[i].name] = res ?? NSNull()
+						row.values[columns[i].name] = res ?? NSNull()
 						pos += n + Int(dlen!)
 						
 						break
@@ -347,7 +361,7 @@ extension MySQL {
 						let (dlen, n) = MySQL.Utils.lenEncInt(Array(packet.data[pos..<packet.data.count]))
 						
 						guard dlen != nil else {
-							row[columns[i].name] = NSNull()
+							row.values[columns[i].name] = NSNull()
 							break
 						}
 						var h = 0, m = 0, s = 0, u = 0
@@ -370,7 +384,7 @@ extension MySQL {
 							break
 						}
 						
-						row[columns[i].name] = res ?? NSNull()
+						row.values[columns[i].name] = res ?? NSNull()
 						pos += n + Int(dlen!)
 						
 						break
@@ -379,7 +393,7 @@ extension MySQL {
 						let (dlen, n) = MySQL.Utils.lenEncInt(Array(packet.data[pos..<packet.data.count]))
 						
 						guard dlen != nil else {
-							row[columns[i].name] = NSNull()
+							row.values[columns[i].name] = NSNull()
 							break
 						}
 						
@@ -406,12 +420,12 @@ extension MySQL {
 						}
 						
 						let dstr = String(format: "%4d-%02d-%02d %02d:%02d:%02d.%06d", arguments: [y, mo, d, h, m, s, u])
-						row[columns[i].name] = Date(dateTimeStringUsec: dstr) ?? NSNull()
+						row.values[columns[i].name] = Date(dateTimeStringUsec: dstr) ?? NSNull()
 						
 						pos += n + Int(dlen!)
 						break
 					default:
-						row[columns[i].name] = NSNull()
+						row.values[columns[i].name] = NSNull()
 						break
 					}
 					
