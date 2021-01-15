@@ -14,9 +14,10 @@ extension MySQL {
 	public class Row : Identifiable {
 		public let id : UUID = UUID()
 		public var values : [String : Any] = [:]
+		public var stringValues : [String : String?] = [:]
+
+		public init() {}
 	}
-	
-	//public typealias Row = [String : Any]
 	
 	/// Row composed of human-readable values.
 	class TextResult : Result {
@@ -70,6 +71,9 @@ extension MySQL {
 					
 					// If value not nil
 					if (value != nil) {
+						// Save string value
+						row.stringValues[column.name] = value
+
 						switch column.fieldType {
 						case MysqlTypes.MYSQL_TYPE_VAR_STRING:
 							row.values[column.name] = value
