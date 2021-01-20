@@ -35,7 +35,7 @@ public extension MySQL.Connection {
 		var result = [UInt8]()
 		
 		// Setup flags
-		var flags :UInt32 = MysqlClientCaps.CLIENT_PROTOCOL_41 |
+		var flags : UInt32 = MysqlClientCaps.CLIENT_PROTOCOL_41 |
 			MysqlClientCaps.CLIENT_LONG_PASSWORD |
 			MysqlClientCaps.CLIENT_TRANSACTIONS |
 			MysqlClientCaps.CLIENT_SECURE_CONN |
@@ -46,10 +46,9 @@ public extension MySQL.Connection {
 		flags &= UInt32((mysql_Handshake?.cap_flags)!) | 0xffff0000
 		
 		// Connect without database
-		if database != nil {
-			flags |= MysqlClientCaps.CLIENT_CONNECT_WITH_DB
-		}
+		if database != nil { flags |= MysqlClientCaps.CLIENT_CONNECT_WITH_DB }
 		
+		// Make sure handhsake is received
 		guard mysql_Handshake != nil else {
 			throw ConnectionError.wrongHandshake
 		}
@@ -137,7 +136,6 @@ public extension MySQL.Connection {
 		
 		return handshake
 	}
-	
 	
 	enum ConnectionError : Error {
 		case addressNotSet

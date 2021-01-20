@@ -4,84 +4,51 @@ public extension MySQL {
 	
 	class ConnectionPool {
 		
-		// Connection with its state
-		struct PoolItem {
-			var connection : MySQL.Connection
-			var connected : Bool
-		}
-		
 		// Parameters
-		let count : Int
-		var connections : [PoolItem]
-		let poolConnection : MySQL.Connection
+		let template : Connection
 		
-		let dispatchQueue = DispatchQueue(label: "conpoolqueue", attributes: [])
+		var connections : [Connection] = []
+		let dispatchQueue = DispatchQueue(label: "mysql.connection.pool")
 		
-		public init(count : Int, connection : MySQL.Connection) throws {
-			self.count = count
-			self.poolConnection = connection
+		public init(connection : MySQL.Connection) {
+			self.template = connection
 			
-			self.connections = [PoolItem]()
-			
-			// Init all connections
-			for _ in 0..<count {
-				let current : Connection = try MySQL.Connection(
-					host: poolConnection.host,
-					user: poolConnection.user,
-					password: poolConnection.password,
-					database: poolConnection.database
-				)
-				
-				// Try opening and add the conneciton to the pool
-				try current.open()
-				connections.append(PoolItem(connection: current, connected: false))
-			}
+			// Init connection
+			connections.append(connection)
 		}
 		
 		open func getConnection() -> MySQL.Connection? {
-			var result : MySQL.Connection? = nil
-			
-			dispatchQueue.sync {
-				// Switch to the first free connection
-				for i in 0..<count {
-					if !connections[i].connected {
-						connections[i].connected = true
-						result = connections[i].connection
-						break
-					}
-				}
-				
-				// If all connections used create a new one
-				if (result == nil) {
-					let connection = try? MySQL.Connection(
-						host: poolConnection.host,
-						user: poolConnection.user,
-						password: poolConnection.password,
-						database: poolConnection.database
-					)
-					
-					// Open
-					try? connection?.open()
-					
-					// Add it the pool
-					let item = PoolItem(connection: connection!, connected: false)
-					self.connections.append(item)
-					
-					result = item.connection
+			// Get the first free connection
+			for i in 0..<connections.count {
+				if (!connections[i].isConnected) {
+					return connections[i]
 				}
 			}
 			
-			return result
+			// If all connections are used create a new one
+			let connection : Connection = template
+			
+			// Open
+			do {
+				try connection.open()
+				
+				// Add it the pool
+				self.connections.append(connection)
+				return connection
+			}
+			catch {
+				print("Connection \(connection.id) couldn't be opened")
+				return nil
+			}
 		}
 		
 		open func free(_ connection: MySQL.Connection) {
-			// Free connection from id
 			dispatchQueue.sync {
-				for i in 0..<count {
-					if connections[i].connection.id == connection.id {
-						connections[i].connected = false
-						break
-					}
+				do {
+					try connections.first { $0.id == connection.id }?.close()
+				}
+				catch {
+					print("Connection \(connection.id) couldn't be closed")
 				}
 			}
 		}

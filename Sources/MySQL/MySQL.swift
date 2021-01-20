@@ -27,11 +27,11 @@ public struct MySQL {
 		var database : String?
 		var port : UInt16
 		
+		var status : UInt16 = 0
 		var affectedRows : UInt64 = 0
 		public var insertId : UInt64 = 0
-		var status : UInt16 = 0
-		public var conID = UUID().uuidString
 		
+		// Network
 		var socket : Socket
 		var mysql_Handshake: mysql_handshake?
 		
@@ -52,6 +52,12 @@ public struct MySQL {
 				socketType: SOCK_STREAM,
 				socketProtocol: 0
 			)
+			
+			// Setup options
+			var value : Int = 1
+			try socket.setOption(level: SOL_SOCKET, option: SO_REUSEADDR, value: &value, length: socklen_t(MemoryLayout<Int32>.size))
+			try socket.setOption(level: SOL_SOCKET, option: SO_KEEPALIVE, value: &value, length: socklen_t(MemoryLayout<Int32>.size))
+			try socket.setOption(level: SOL_SOCKET, option: SO_NOSIGPIPE, value: &value, length: socklen_t(MemoryLayout<Int32>.size))
 		}
 	}
 	
