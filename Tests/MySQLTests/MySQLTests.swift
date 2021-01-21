@@ -37,31 +37,21 @@ class MySQLSwiftTest : XCTestCase {
 		try connection!.open()
 		let result = try connection!.query("SELECT * FROM users")
 		
-		for row in try result.readAllRows()! {
+		for row in result.first?.rows ?? [] {
 			print(row)
 		}
 	}
 	
 	func testQueryMultipleResults() throws {
 		try connection!.open()
-		var result = try connection!.query("SELECT * FROM users; SELECT * FROM projects")
+		let results = try connection!.query("SELECT * FROM users; SELECT * FROM projects")
 		
-		var shouldRepeat : Bool = false
-		repeat {
+		for result in results {
 			// Display rows
-			for row in try result.readAllRows()! {
+			for row in result.rows {
 				print(row)
 			}
-			
-			// Repeat if more results
-			if (result.hasMoreResults) {
-				result = try connection!.nextResult()
-				shouldRepeat = true
-			}
-			else {
-				shouldRepeat = false
-			}
-		} while shouldRepeat
+		}
 	}
 	
 	func testPrepareNoArgs() throws {
@@ -69,7 +59,7 @@ class MySQLSwiftTest : XCTestCase {
 		let stmt : MySQL.Statement = try connection!.prepare("SELECT * FROM users")
 		let result : Result = try stmt.query([])
 		
-		for row in try result.readAllRows()! {
+		for row in result.rows {
 			print(row)
 		}
 	}
@@ -79,7 +69,7 @@ class MySQLSwiftTest : XCTestCase {
 		let stmt : MySQL.Statement = try connection!.prepare("SELECT SQRT(POW(?,2) + POW(?,2)) AS hypotenuse")
 		let result : Result = try stmt.query(["1", "2"])
 		
-		for row in try result.readAllRows()! {
+		for row in result.rows {
 			print(row)
 		}
 	}

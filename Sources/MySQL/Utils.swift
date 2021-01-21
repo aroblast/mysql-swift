@@ -13,7 +13,6 @@ fileprivate func < <T : Comparable>(lhs: T?, rhs: T?) -> Bool {
 }
 
 extension MySQL {
-	
 	internal struct Utils {
 		static func mysqlType(_ val:Any) ->String {
 			switch val {
@@ -255,6 +254,10 @@ extension MySQL {
 			return s3
 		}
 	}
+}
+
+func byteArray<T>(from value: T) -> [UInt8] where T : FixedWidthInteger {
+	withUnsafeBytes(of: value.bigEndian, Array.init)
 }
 
 public extension Date

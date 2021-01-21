@@ -11,18 +11,21 @@ import Foundation
 
 public extension MySQL.Connection {
 	/// Execute a SQL query.
-	func query(_ query : String) throws -> Result {
+	func query(_ query : String) throws -> [Result] {
 		try writeCommandPacketStr(MysqlCommands.COM_QUERY, query: query)
-		return try nextResult()
-	}
-	
-	/// Get next result of query.
-	func nextResult() throws -> Result {
-		// Get columns
-		let resLen = try resultLength()
-		let columns : [Field] = try readColumns(resLen)
 		
-		return MySQL.TextResult(connection: self, columns: columns)
+		var results : [Result] = []
+		
+		repeat {
+			// Get result
+			let resLen = try resultLength()
+			let columns : [Field] = try readColumns(resLen)
+			
+			results.append(MySQL.TextResult(connection: self, columns: columns))
+		}
+		while results.last?.hasMoreResults ?? false
+		
+		return results
 	}
 	
 	/// Prepare a SQL query.
@@ -35,11 +38,11 @@ public extension MySQL.Connection {
 		let paramCount = stmt.paramCount
 		
 		if paramCount > 0 {
-			try readUntilEOF()
+			try recvUntilEOF() // Params
 		}
 		
 		if columnCount > 0 {
-			try readUntilEOF()
+			try recvUntilEOF() // Columns
 		}
 		
 		return stmt
@@ -49,21 +52,22 @@ public extension MySQL.Connection {
 	func exec(_ query : String) throws {
 		try writeCommandPacketStr(MysqlCommands.COM_QUERY, query: query)
 		
-		// SKip result
+		// Skip result
 		if try resultLength() > 0 {
-			try readUntilEOF()
-			try readUntilEOF()
+			try recvUntilEOF() // Columns
+			try recvUntilEOF() // Rows
 		}
 	}
 	
+	/// Use database.
 	func use(_ database : String) throws {
 		try writeCommandPacketStr(MysqlCommands.COM_INIT_DB, query: database)
 		self.database = database
 		
 		// Skip result
 		if try resultLength() > 0 {
-			try readUntilEOF()
-			try readUntilEOF()
+			try recvUntilEOF() // Columns
+			try recvUntilEOF() // Rows
 		}
 	}
 }

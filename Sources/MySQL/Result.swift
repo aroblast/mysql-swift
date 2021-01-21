@@ -2,20 +2,19 @@ import Foundation
 import Socket
 
 public protocol Result {
+	var rows : [MySQL.Row] { get }
 	var EOFfound : Bool { get }
 	var hasMoreResults : Bool { get }
-
+	
 	func readRow() throws -> MySQL.Row?
-	func readAllRows() throws -> [MySQL.Row]?
 }
 
 extension MySQL {
-
 	public class Row : Identifiable {
 		public let id : UUID = UUID()
 		public var values : [String : Any] = [:]
 		public var stringValues : [String : String?] = [:]
-
+		
 		public init() {}
 	}
 	
@@ -24,15 +23,27 @@ extension MySQL {
 		let columns : [Field]
 		let connection : Connection
 		
+		var rows : [Row] = []
+		
 		var EOFfound : Bool = false
 		var hasMoreResults : Bool = false
 		
 		required init(connection : Connection, columns : [Field]) {
 			self.connection = connection
 			self.columns = columns
+			
+			do {
+				// While row exists
+				while let row = try readRow() {
+					rows.append(row)
+				}
+			}
+			catch {
+				print("Error while getting rows.")
+			}
 		}
 		
-		/// Read current row.
+		/// Read row.
 		func readRow() throws -> Row? {
 			// If no columns
 			if columns.count == 0 {
@@ -42,7 +53,7 @@ extension MySQL {
 			
 			if (!EOFfound && columns.count > 0) {
 				// Get result packet
-				let packet : Packet = try connection.socket.recvPacket(headerLength: 3)
+				let packet : Packet = try connection.socket.readPacket()
 				
 				// Check if last packet
 				if (packet.data[0] == 0xfe) && (packet.data.count == 5) {
@@ -73,7 +84,7 @@ extension MySQL {
 					if (value != nil) {
 						// Save string value
 						row.stringValues[column.name] = value
-
+						
 						switch column.fieldType {
 						case MysqlTypes.MYSQL_TYPE_VAR_STRING:
 							row.values[column.name] = value
@@ -168,22 +179,13 @@ extension MySQL {
 				return nil
 			}
 		}
-		
-		func readAllRows() throws -> [Row]? {
-			var result = [Row]()
-			
-			// While row exists
-			while let row = try readRow() {
-				result.append(row)
-			}
-			
-			return result
-		}
 	}
 	
 	class BinaryResult : Result {
 		var columns : [Field]
 		var connection: Connection
+		
+		var rows : [Row] = []
 		
 		var EOFfound : Bool = false
 		var hasMoreResults : Bool = false
@@ -191,6 +193,16 @@ extension MySQL {
 		required init(connection : Connection, columns : [Field]) {
 			self.connection = connection
 			self.columns = columns
+			
+			do {
+				// While row exists
+				while let row = try readRow() {
+					rows.append(row)
+				}
+			}
+			catch {
+				print("Error while getting rows.")
+			}
 		}
 		
 		func readRow() throws -> MySQL.Row?{
@@ -200,7 +212,7 @@ extension MySQL {
 			}
 			
 			if !EOFfound, columns.count > 0 {
-				let packet : Packet = try connection.socket.recvPacket(headerLength: 3)
+				let packet : Packet = try connection.socket.readPacket()
 				
 				// Success packet
 				if packet.data[0] != 0x00 {
@@ -438,17 +450,6 @@ extension MySQL {
 			}
 			
 			return nil
-		}
-		
-		func readAllRows() throws -> [Row]? {
-			var result = [Row]()
-			
-			// For each result
-			while let row = try readRow() {
-				result.append(row)
-			}
-			
-			return result
 		}
 	}
 }

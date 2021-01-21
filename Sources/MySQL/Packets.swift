@@ -1,12 +1,36 @@
+import Foundation
 import Socket
 
-extension Packet {
-	static func header(length : Int, number : UInt8) -> [UInt8] {
-		// Set packet header and append packet number for TCP
-		var header = [UInt8].UInt24Array(UInt32(length))
-		header.append(number)
+struct Packet {
+	let header : Header
+	let data : [UInt8]
+}
+
+struct Header {
+	var length : UInt32
+	let sequence : UInt8
+	
+	init(_ array : [UInt8]) {
+		var lengthArray : [UInt8] = []
 		
-		return header
+		// Add 0 for 4 bytes length
+		lengthArray.append(contentsOf: array[0..<3])
+		lengthArray.append(0)
+		
+		self.length = UInt32(littleEndian: lengthArray.withUnsafeBytes { $0.load(as: UInt32.self) })
+		self.sequence = array[3]
+	}
+	
+	init(length : UInt32, sequence : UInt8) {
+		self.length = length
+		self.sequence = sequence
+	}
+	
+	func encode() -> [UInt8] {
+		var result : [UInt8] = Array(byteArray(from: length.bigEndian)[0..<3])
+		result.append(sequence)
+		
+		return result
 	}
 }
 
@@ -48,10 +72,10 @@ extension MySQL.Connection {
 	}
 	
 	/// Read packets data until EOF.
-	func readUntilEOF() throws {
+	func recvUntilEOF() throws {
 		while true {
 			// Check for EOF
-			if try socket.recvPacket(headerLength: 3).data[0] == 0xfe { return }
+			if try socket.readPacket().data[0] == 0xfe { return }
 		}
 	}
 	
@@ -62,7 +86,9 @@ extension MySQL.Connection {
 		data.append(cmd)
 		data.append(contentsOf: query.utf8)
 		
-		try socket.sendPacket(header: Packet.header(length: data.count, number: 0), data: data)
+		// Send header and data
+		try socket.writeData(data: Header(length: UInt32(data.count), sequence: 0).encode())
+		try socket.writeData(data: data)
 	}
 	
 	/// Write command only to socket.
@@ -71,12 +97,20 @@ extension MySQL.Connection {
 		
 		data.append(cmd)
 		
-		try socket.sendPacket(header: Packet.header(length: data.count, number: 0), data: data)
+		try socket.writePacket(
+			Packet(
+				header: Header(
+					length: UInt32(data.count),
+					sequence: 0),
+				
+				data: data
+			)
+		)
 	}
 	
 	/// Read result length.
 	func resultLength() throws ->Int {
-		let data : [UInt8] = try socket.recvPacket(headerLength: 3).data
+		let data : [UInt8] = try socket.readPacket().data
 		
 		switch data[0] {
 		case 0x00:
@@ -111,8 +145,8 @@ extension MySQL.Connection {
 		if count > 0 {
 			var i = 0
 			while true {
-				let packet : Packet = try socket.recvPacket(headerLength: 3)
-					
+				let packet : Packet = try socket.readPacket()
+				
 				// EOF Packet
 				if (packet.data[0] == 0xfe) && ((packet.data.count == 5) || (packet.data.count == 1)) {
 					return columns

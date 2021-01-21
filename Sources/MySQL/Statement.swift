@@ -30,14 +30,14 @@ public extension MySQL {
 			try writeExecutePacket(args)
 			
 			if (try connection.resultLength() > 0) {
-				try connection.readUntilEOF()
-				try connection.readUntilEOF()
+				try connection.recvUntilEOF() // Columns
+				try connection.recvUntilEOF() // Rows
 			}
 		}
 		
 		/// Read the prepare result response from the socket.
 		func readPrepareResultPacket() throws -> UInt16 {
-			let packet : Packet = try connection.socket.recvPacket(headerLength: 3)
+			let packet : Packet = try connection.socket.readPacket()
 			if packet.data[0] != 0x00 {
 				throw (connection.errorPacket(packet.data))
 			}
@@ -229,7 +229,16 @@ public extension MySQL {
 				data += argsArr
 			}
 			
-			try connection.socket.sendPacket(header: Packet.header(length: data.count, number: 0), data: data)
+			try connection.socket.writePacket(
+				Packet(
+					header: Header(
+						length: UInt32(data.count),
+						sequence: 0
+					),
+					
+					data: data
+				)
+			)
 		}
 	}
 	

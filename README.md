@@ -18,7 +18,7 @@ let connection = MySQL.Connection(
   address: "address",
   user: "user",
   password: "password",
-  database: "database"
+  database: "database" // Optional
 )
 
 do{
@@ -41,18 +41,38 @@ Create a new query from a connection.
 try connection.exec("USE db")
 ```
 
+#### Query
+
+##### Single result
+```swift
+	let results = try connection!.query("SELECT * FROM users")
+	
+  for row in results.first?.rows ?? [] {
+    // Do something
+  }
+```
+
+##### Multiple results
+```swift
+  let results = try connection!.query("SELECT * FROM users; SELECT * FROM projects")
+		
+  for result in results {
+    // Do something
+	}
+```
+
 #### Prepared
 ```swift
 // Prepare the query
-let stmt : MySQL.Statement = try connection.prepare("SELECT * FROM ?")
+let stmt : MySQL.Statement = try connection.prepare("SELECT * FROM table WHERE condition = ?")
 
-// Execute the query with arguments
-stmt.exec(["tableName"])
+// Either execute the query with arguments
+stmt.exec(["value"])
 
-// Execute the query with arguments and get results
-let results : MySQL.Result = try stmt.query(["tableName"])
+// Or execute the query with arguments and get results
+let result : Result = try stmt.query(["tableName"])
 
-for row in results.readAllRows() ?? [] {
+for row in result.rows {
   print(row)
 }
 ```
@@ -63,7 +83,7 @@ for row in results.readAllRows() ?? [] {
 ### Connection Pool
 ```swift
 // Create a connection pool with 10 connections from connection
-let pool = try MySQL.ConnectionPool(number: 10, connection: connection)
+let pool = try MySQL.ConnectionPool(connection: connection)
 
 // Use a connection from the connection pool
 if let poolConnection = pool.getConnection() {
@@ -75,38 +95,5 @@ if let poolConnection = pool.getConnection() {
 
 
 ## License
-Copyright (c) 2015, Marius Corega
-All rights reserved.
 
-Permission is granted to anyone to use this software for any purpose, 
-including commercial applications, and to alter it and redistribute it freely.
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are met:
-
-* Redistributions of source code must retain the above copyright notice, this
-  list of conditions and the following disclaimer.
-
-* Redistributions in binary form must reproduce the above copyright notice,
-  this list of conditions and the following disclaimer in the documentation
-  and/or other materials provided with the distribution.
-
-* Neither the name of the {organization} nor the names of its
-  contributors may be used to endorse or promote products derived from
-  this software without specific prior written permission.
-
-* If you use this software in a product, an acknowledgment in the product 
-  documentation is required. Altered source versions must be plainly marked 
-  as such, and must not be misrepresented as being the original software. 
-  This notice may not be removed or altered from any source or binary distribution.
-  
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
-FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
-OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+This project is under MIT license.
