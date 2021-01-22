@@ -73,4 +73,23 @@ class MySQLSwiftTest : XCTestCase {
 			print(row)
 		}
 	}
+	
+	func testLoop() throws {
+		try connection!.open()
+		
+		try connection!.query("SELECT * FROM users")
+		print("REQUEST 0")
+		
+		DispatchQueue(label: "test").sync { [self] in
+			sleep(60)
+			
+			do {
+				try connection!.query("SELECT * FROM users")
+				print("REQUEST 1")
+			}
+			catch {
+				print(error)
+			}
+		}
+	}
 }

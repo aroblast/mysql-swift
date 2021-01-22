@@ -38,10 +38,25 @@ extension MySQL {
 			)
 			
 			// Setup options
-			var value : Int = 1
-			try socket.setOption(level: SOL_SOCKET, option: SO_REUSEADDR, value: &value, length: socklen_t(MemoryLayout<Int32>.size))
-			try socket.setOption(level: SOL_SOCKET, option: SO_KEEPALIVE, value: &value, length: socklen_t(MemoryLayout<Int32>.size))
-			try socket.setOption(level: SOL_SOCKET, option: SO_NOSIGPIPE, value: &value, length: socklen_t(MemoryLayout<Int32>.size))
+			var on : Int32 = 1
+			try socket.setOption(level: SOL_SOCKET, option: SO_REUSEADDR, value: &on, length: socklen_t(MemoryLayout<Int32>.size))
+			try socket.setOption(level: SOL_SOCKET, option: SO_KEEPALIVE, value: &on, length: socklen_t(MemoryLayout<Int32>.size))
+			//try socket.setOption(level: SOL_SOCKET, option: SO_NOSIGPIPE, value: &on, length: socklen_t(MemoryLayout<Int32>.size))
+			
+			var timeout : timeval = timeval(tv_sec: 120, tv_usec: 0)
+			try socket.setOption(level: SOL_SOCKET, option: SO_RCVTIMEO, value: &timeout, length: socklen_t(MemoryLayout<timeval>.size))
+			
+			// Setup SIGPIPE handler
+			socket.on(event: SIGPIPE, handler: { signal in
+				print("SIGPIPE \(signal)")
+				
+				/*do {
+					try self.connect()
+				}
+				catch {
+					print("Error trying to reconnect to host")
+				}*/
+			})
 		}
 		
 		/// Open MySQL connection.
